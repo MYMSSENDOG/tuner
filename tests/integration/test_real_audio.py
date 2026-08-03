@@ -25,7 +25,7 @@ from tuner.tools.annotate import main as annotate_cli
 from tests.helpers import cents_error, track_signal
 from tests.synth import SR, add_noise, sequence, tone
 
-FIXTURE_DIR = Path(__file__).parent / "fixtures" / "audio"
+FIXTURE_DIR = Path(__file__).parent.parent / "fixtures" / "audio"
 TOLERANCE_CENTS = 10.0  # two independent algorithms on real audio
 STABILITY_CENTS = 20.0  # neighboring windows this close = stable region
 

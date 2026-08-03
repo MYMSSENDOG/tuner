@@ -48,12 +48,18 @@ tuner/
 │   │   └── meter_widget.py    #   ±50 cent 미터 (커스텀 페인팅, 색상 규칙)
 │   └── __main__.py
 └── tests/
+    ├── conftest.py            # Qt offscreen 기본값, 공용 qapp fixture
     ├── synth.py               # 테스트 신호 합성기 (아래 4절)
-    ├── test_notes.py
-    ├── test_pitch_accuracy.py
-    ├── test_noise_robustness.py
-    ├── test_responsiveness.py
-    └── test_tracker.py
+    ├── helpers.py / fakes.py  # 측정 헬퍼, FakeAudioInput
+    ├── unit/                  # 순수 로직 (notes, tracker, synth 자체검증)
+    ├── dsp/                   # DSP 품질 (정확도, 노이즈, 반응성, detector, 주석기)
+    ├── integration/           # 파이프라인 조립 (engine, UI offscreen, 실오디오 비교)
+    ├── e2e/                   # 실기기: 오디오 장치 열거/캡처/핫스왑,
+    │                          #   always-on-top 실제 스태킹 (실디스플레이 서브프로세스 프로브)
+    └── fixtures/audio/        # Iowa MIS 실악기 샘플 + .ref.json + 노이즈 변형
+
+# Win/Mac 테스트는 분리하지 않는다 — 코드가 플랫폼 공용이므로 같은 스위트를
+# CI 매트릭스(macos-latest, windows-latest)에서 실행. e2e 는 하드웨어 필요 시 자체 skip.
 ```
 
 데이터 흐름: `sounddevice 콜백 → ring buffer → engine (worker) → pitch.detect → tracker.update → notes.to_reading → Qt signal → UI`

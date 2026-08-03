@@ -23,3 +23,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "e2e: needs real hardware (audio device) or a real display; skips itself when unavailable",
+]

@@ -5,30 +5,8 @@ import numpy as np
 from tuner.app.engine import TunerEngine
 from tuner.core.tracker import State
 
+from tests.fakes import FakeAudioInput
 from tests.synth import SR, tone
-
-
-class FakeAudioInput:
-    """Delivers a prepared signal in blocks, synchronously, when pumped."""
-
-    def __init__(self, signal: np.ndarray, block_size: int = 256):
-        self._signal = signal
-        self._block_size = block_size
-        self._callback = None
-
-    def list_devices(self):
-        return []
-
-    def start(self, device_id, callback):
-        self._callback = callback
-        return SR
-
-    def stop(self):
-        self._callback = None
-
-    def pump(self):
-        for start in range(0, len(self._signal), self._block_size):
-            self._callback(self._signal[start : start + self._block_size])
 
 
 def run_engine(signal: np.ndarray, a4_hz: float = 440.0):
@@ -62,3 +40,14 @@ def test_silence_reports_silent():
     readings = run_engine(np.zeros(SR // 2))
     assert readings
     assert all(r.state is State.SILENT and r.note is None for r in readings)
+
+
+def test_engine_restarts_on_new_device():
+    fake = FakeAudioInput()
+    engine = TunerEngine(fake, lambda r: None)
+    engine.start(1)
+    engine.stop()
+    engine.start(2)
+    engine.stop()
+    assert fake.started_with == [1, 2]
+    assert fake.stop_count == 2

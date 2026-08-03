@@ -46,7 +46,7 @@ def test_engine_accepts_spectral_detector():
     from tuner.app.engine import TunerEngine
     from tuner.core.tracker import State
 
-    from tests.test_engine import FakeAudioInput
+    from tests.fakes import FakeAudioInput
 
     readings = []
     fake = FakeAudioInput(tone(440.0, 0.5, instrument="violin"))
@@ -63,7 +63,7 @@ def test_engine_detector_hotswap():
     from tuner.app.engine import TunerEngine
     from tuner.core.tracker import State
 
-    from tests.test_engine import FakeAudioInput
+    from tests.fakes import FakeAudioInput
 
     readings = []
     fake = FakeAudioInput(tone(440.0, 0.5, instrument="violin"))
