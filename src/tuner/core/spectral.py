@@ -15,7 +15,6 @@ N_HARMONICS = 4
 MIN_PROMINENCE = 4.0  # genuine spectral peak vs local floor (median of ±300 cents)
 
 
-
 def estimate_f0(
     frame: np.ndarray,
     sr: int,

@@ -15,8 +15,6 @@ DEFAULT_FRAME_SIZE = 2048
 DEFAULT_HOP_SIZE = 256
 
 
-
-
 @dataclass(frozen=True)
 class PitchResult:
     freq_hz: float | None

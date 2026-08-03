@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import soundfile as sf
 
 from tuner.analysis.reference import RefWindow, annotate
 from tuner.core.notes import note_to_freq
@@ -96,7 +97,6 @@ def assert_pipeline_agreement(errors: list[float], label: str, noisy: bool = Fal
 
 def test_cli_end_to_end(tmp_path):
     """Full user workflow on a known signal: wav -> CLI annotation -> comparison."""
-    sf = pytest.importorskip("soundfile")
     freqs = [note_to_freq(n, o) for n, o in [("G", 3), ("B", 3), ("D", 4), ("G", 4), ("D", 5)]]
     signal = add_noise(sequence(freqs, 0.4, instrument="violin"), 20.0, seed=5)
     wav = tmp_path / "arpeggio.wav"
@@ -141,7 +141,6 @@ fixture_files = sorted(
 
 @pytest.mark.parametrize("audio_path", fixture_files, ids=lambda p: p.name)
 def test_user_fixture(audio_path: Path):
-    sf = pytest.importorskip("soundfile")
     signal, sr = sf.read(audio_path, always_2d=True)
     mono = signal.mean(axis=1)
 

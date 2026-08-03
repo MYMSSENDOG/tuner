@@ -70,7 +70,10 @@ def test_engine_detector_hotswap():
     engine = TunerEngine(fake, readings.append, detector=YinDetector())
     engine.start()
     fake.pump()
+    # contract: the stream must be stopped while the detector is swapped
+    engine.stop()
     engine.set_detector(SpectralDetector())
+    engine.start()
     fake.pump()
     engine.stop()
     ok = [r for r in readings if r.state is State.OK]

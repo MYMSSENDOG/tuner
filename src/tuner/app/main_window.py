@@ -92,7 +92,10 @@ class MainWindow(QMainWindow):
         self._meter.set_reading(reading)
 
     def _on_detector_changed(self) -> None:
+        # the audio thread must not be mid-callback while the buffer is swapped
+        self._engine.stop()
         self._engine.set_detector(self._detector_combo.currentData()())
+        self._engine.start(self._device_combo.currentData())
 
     def _on_device_changed(self) -> None:
         self._engine.stop()

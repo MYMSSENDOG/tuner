@@ -36,10 +36,7 @@ class TunerEngine:
         self._a4_hz = 440.0
         self._sr = 0
         self._detector: PitchDetector = detector or YinDetector()
-        self._tracker = PitchTracker()
-        self._buffer = np.zeros(self._detector.frame_size)
-        self._filled = 0
-        self._pending = 0
+        self._reset_pipeline()
 
     @property
     def a4_hz(self) -> float:
@@ -49,21 +46,23 @@ class TunerEngine:
         self._a4_hz = a4_hz
 
     def set_detector(self, detector: PitchDetector) -> None:
+        """Swap the detection algorithm. Not safe while the stream is running
+        (the audio thread reads the buffer this replaces) — stop() first."""
         self._detector = detector
-        self._buffer = np.zeros(detector.frame_size)
-        self._filled = 0
-        self._pending = 0
-        self._tracker = PitchTracker()
+        self._reset_pipeline()
 
     def start(self, device_id: int | None = None) -> None:
-        self._tracker = PitchTracker()
-        self._buffer[:] = 0.0
-        self._filled = 0
-        self._pending = 0
+        self._reset_pipeline()
         self._sr = self._audio.start(device_id, self._on_block)
 
     def stop(self) -> None:
         self._audio.stop()
+
+    def _reset_pipeline(self) -> None:
+        self._tracker = PitchTracker()
+        self._buffer = np.zeros(self._detector.frame_size)
+        self._filled = 0
+        self._pending = 0
 
     def _on_block(self, block: np.ndarray) -> None:
         n = len(block)

@@ -36,6 +36,14 @@ class MeterWidget(QWidget):
         self._reading = reading
         self.update()
 
+    def _font(self, point_size: int, bold: bool = False) -> QFont:
+        # derive from the system default — a hardcoded family would silently
+        # fall back (and warn) on platforms that lack it
+        font = self.font()
+        font.setPointSize(max(1, point_size))
+        font.setBold(bold)
+        return font
+
     # geometry helpers -----------------------------------------------------
 
     def _pivot_and_radius(self) -> tuple[QPointF, float]:
@@ -74,7 +82,7 @@ class MeterWidget(QWidget):
             self._draw_cents_badge(painter, pivot, radius, reading.note.cents)
         elif reading is not None and reading.state is State.NOISY:
             painter.setPen(DIM_TEXT)
-            painter.setFont(QFont("Helvetica", 22, QFont.Weight.Bold))
+            painter.setFont(self._font(22, bold=True))
             painter.drawText(
                 QRectF(0, pivot.y() - radius * 0.45, self.width(), 40),
                 Qt.AlignmentFlag.AlignCenter,
@@ -82,8 +90,7 @@ class MeterWidget(QWidget):
             )
 
     def _draw_scale(self, painter: QPainter, pivot: QPointF, radius: float) -> None:
-        label_font = QFont("Helvetica", 10)
-        painter.setFont(label_font)
+        painter.setFont(self._font(10))
         for cents in range(-50, 51):
             major = cents % 10 == 0
             in_tune_region = abs(cents) <= 10
@@ -110,7 +117,7 @@ class MeterWidget(QWidget):
         painter.setPen(QPen(LABEL_COLOR, 1.5))
         painter.setBrush(QColor(0, 0, 0, 40))
         painter.drawRoundedRect(rect, 8, 8)
-        painter.setFont(QFont("Helvetica", int(radius * 0.13), QFont.Weight.Bold))
+        painter.setFont(self._font(int(radius * 0.13), bold=True))
         painter.setPen(QColor("#9ec3ef"))
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
 
@@ -119,7 +126,7 @@ class MeterWidget(QWidget):
         if reading is None or reading.note is None:
             return
         painter.setPen(QColor("#6fa8dc"))
-        painter.setFont(QFont("Helvetica", 16, QFont.Weight.Bold))
+        painter.setFont(self._font(16, bold=True))
         text = f"{reading.note.label}: {reading.note.freq_hz:.0f}Hz"
         painter.drawText(
             QRectF(0, 8, self.width(), 28), Qt.AlignmentFlag.AlignCenter, text
@@ -132,10 +139,10 @@ class MeterWidget(QWidget):
         if reading is not None and reading.state is State.OK and reading.note is not None:
             painter.fillRect(rect, ZONE_COLORS[zone_for_cents(reading.note.cents)])
             painter.setPen(QColor("#20301a"))
-            painter.setFont(QFont("Helvetica", int(bar_h * 0.62), QFont.Weight.Bold))
+            painter.setFont(self._font(int(bar_h * 0.62), bold=True))
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, reading.note.name)
         else:
             painter.fillRect(rect, QColor("#333c4d"))
             painter.setPen(DIM_TEXT)
-            painter.setFont(QFont("Helvetica", int(bar_h * 0.18)))
+            painter.setFont(self._font(int(bar_h * 0.18)))
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "—")
