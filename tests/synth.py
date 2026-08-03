@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from tuner.tools.add_noise import mix_noise
+
 SR = 44100
 
 # Relative harmonic amplitudes (fundamental first) roughly mimicking timbres.
@@ -92,23 +94,8 @@ def sequence(
     return np.concatenate(parts)
 
 
-def add_noise(signal: np.ndarray, snr_db: float, seed: int = 0, pink_ratio: float = 0.5) -> np.ndarray:
-    """Mix in white+pink noise at the given SNR (relative to signal power)."""
-    rng = np.random.default_rng(seed)
-    n = len(signal)
-    white = rng.standard_normal(n)
-    # pink noise: shape white noise spectrum by 1/sqrt(f)
-    spectrum = np.fft.rfft(rng.standard_normal(n))
-    f = np.fft.rfftfreq(n, 1.0)
-    f[0] = f[1] if len(f) > 1 else 1.0
-    pink = np.fft.irfft(spectrum / np.sqrt(f), n)
-    pink /= np.std(pink)
-    noise = (1 - pink_ratio) * white + pink_ratio * pink
-    noise /= np.std(noise)
-
-    signal_power = np.mean(signal**2)
-    noise_power = signal_power / (10.0 ** (snr_db / 10.0))
-    return signal + noise * np.sqrt(noise_power)
+# the one noise model, shared with the fixture-generation CLI
+add_noise = mix_noise
 
 
 def measured_snr_db(signal: np.ndarray, noisy: np.ndarray) -> float:

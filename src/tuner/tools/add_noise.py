@@ -20,7 +20,9 @@ import soundfile as sf
 
 
 def mix_noise(signal: np.ndarray, snr_db: float, seed: int = 0, pink_ratio: float = 0.5) -> np.ndarray:
-    """Mix white+pink noise into signal at the given SNR (vs signal power)."""
+    """Mix white+pink noise into signal at exactly the given SNR (vs signal
+    power). The canonical noise model for the whole test suite — tests/synth
+    delegates here so synthesized and fixture noise can never drift apart."""
     rng = np.random.default_rng(seed)
     n = len(signal)
     white = rng.standard_normal(n)
@@ -34,9 +36,7 @@ def mix_noise(signal: np.ndarray, snr_db: float, seed: int = 0, pink_ratio: floa
 
     signal_power = np.mean(signal**2)
     noise_power = signal_power / (10.0 ** (snr_db / 10.0))
-    noisy = signal + noise * np.sqrt(noise_power)
-    peak = np.max(np.abs(noisy))
-    return noisy / peak if peak > 1.0 else noisy
+    return signal + noise * np.sqrt(noise_power)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -51,6 +51,9 @@ def main(argv: list[str] | None = None) -> int:
     signal, sr = sf.read(audio_path, always_2d=True)
     mono = signal.mean(axis=1)
     noisy = mix_noise(mono, args.snr, seed=args.seed)
+    peak = np.max(np.abs(noisy))
+    if peak > 1.0:  # keep the written file within full scale
+        noisy /= peak
 
     output_path = (
         Path(args.output)
