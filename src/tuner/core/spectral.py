@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import numpy as np
 
+from tuner.core import SILENCE_RMS
+
 N_HARMONICS = 4
 MIN_PROMINENCE = 4.0  # genuine spectral peak vs local floor (median of ±300 cents)
-_SILENCE_RMS = 1e-5
+
 
 
 def estimate_f0(
@@ -23,7 +25,7 @@ def estimate_f0(
 ) -> tuple[float | None, float]:
     """Returns (f0 in Hz or None, confidence in [0, 1])."""
     x = np.asarray(frame, dtype=np.float64)
-    if np.sqrt(np.mean(x * x)) < _SILENCE_RMS:
+    if np.sqrt(np.mean(x * x)) < SILENCE_RMS:
         return None, 0.0
     x = x * np.hanning(len(x))
     nfft = 4 * len(x)  # zero-padding for interpolation resolution

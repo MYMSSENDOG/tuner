@@ -9,10 +9,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from tuner.core import SILENCE_RMS
+
 DEFAULT_FRAME_SIZE = 2048
 DEFAULT_HOP_SIZE = 256
 
-_SILENCE_RMS = 1e-5
+
 
 
 @dataclass(frozen=True)
@@ -52,7 +54,7 @@ def detect(
 ) -> PitchResult:
     x = np.asarray(frame, dtype=np.float64)
     w = x.size // 2
-    if np.sqrt(np.mean(x * x)) < _SILENCE_RMS:
+    if np.sqrt(np.mean(x * x)) < SILENCE_RMS:
         return PitchResult(None, 0.0)
 
     d = _difference_function(x, w)
