@@ -54,20 +54,8 @@ def estimate_f0(
                 break
 
     # ...and the mirror error: when the fundamental is weak (brass and cello
-    # low notes), HPS lands on harmonic k instead. Dividing f0 is justified
-    # exactly when the division's extra combs — the multiples NOT shared with
-    # coarse — capture substantially more of the spectral energy (i.e. real
-    # partials exist between coarse's harmonics). Repeated halving/thirding
-    # covers any composite division.
-    while True:
-        base = _comb_coverage(spectrum, coarse_hz, bin_hz)
-        for div in (2, 3):
-            candidate = coarse_hz / div
-            if candidate >= fmin and _comb_coverage(spectrum, candidate, bin_hz) - base >= 0.1:
-                coarse_hz = candidate
-                break
-        else:
-            break
+    # low notes), HPS lands on harmonic k instead.
+    coarse_hz = divide_to_true_f0(spectrum, coarse_hz, bin_hz, fmin)
 
     # refine: per-harmonic maximum-likelihood frequency via continuous DTFT
     # search, then harmonic-weighted average
@@ -88,6 +76,58 @@ def estimate_f0(
     f0 = float(np.average(estimates, weights=weights))
 
     return f0, _comb_coverage(spectrum, f0, bin_hz)
+
+
+def divide_to_true_f0(
+    spectrum: np.ndarray, f0_hz: float, bin_hz: float, fmin: float, min_gain: float = 0.1
+) -> float:
+    """Correct an estimate that landed on harmonic k of the true pitch.
+
+    Dividing f0 is justified exactly when the division's extra combs — the
+    multiples NOT shared with f0 — capture substantially more of the spectral
+    energy (i.e. real partials exist between f0's harmonics). Broadband noise
+    also leaks energy into the extra combs, so the required gain scales with
+    what a flat spectrum would yield there; concentrated sub-partials beat
+    that baseline, spread noise doesn't. Repeated halving/thirding covers any
+    composite division.
+    """
+    def comb_bins(f: float) -> float:
+        return min(len(spectrum), 17.0 * len(spectrum) * bin_hz / f)
+
+    while True:
+        base = _comb_coverage(spectrum, f0_hz, bin_hz)
+        noncomb_bins = max(1.0, len(spectrum) - comb_bins(f0_hz))
+        divided = False
+        for div in (2, 3):
+            candidate = f0_hz / div
+            if candidate < fmin:
+                continue
+            extra_bins = comb_bins(candidate) - comb_bins(f0_hz)
+            flat_gain = (1.0 - base) * extra_bins / noncomb_bins
+            gate = max(min_gain, 3.0 * flat_gain)
+            if _comb_coverage(spectrum, candidate, bin_hz) - base >= gate:
+                f0_hz = candidate
+                divided = True
+                break
+        if not divided:
+            return f0_hz
+
+
+def restore_weak_fundamental(
+    frame: np.ndarray, sr: int, f0_hz: float, fmin: float = 60.0, min_gain: float = 0.02
+) -> float:
+    """Spectral cross-check for time-domain pitch estimates.
+
+    A signal whose fundamental carries a few percent of the energy (oboe,
+    low brass) is nearly periodic at the dominant harmonic's lag, so
+    lag-domain dips cannot tell T from T/k — but the weak partials between
+    the dominant harmonic's multiples are plainly visible spectrally.
+    """
+    x = np.asarray(frame, dtype=np.float64)
+    x = x * np.hanning(len(x))
+    nfft = 4 * len(x)
+    spectrum = np.abs(np.fft.rfft(x, nfft))
+    return divide_to_true_f0(spectrum, f0_hz, sr / nfft, fmin, min_gain)
 
 
 def _comb_coverage(spectrum: np.ndarray, f0_hz: float, bin_hz: float) -> float:

@@ -11,7 +11,7 @@ import numpy as np
 
 from tuner.core import pitch
 from tuner.core.pitch import PitchResult
-from tuner.core.spectral import estimate_f0
+from tuner.core.spectral import estimate_f0, restore_weak_fundamental
 
 
 class PitchDetector(Protocol):
@@ -30,7 +30,16 @@ class YinDetector:
     hop_size = pitch.DEFAULT_HOP_SIZE
 
     def detect(self, frame: np.ndarray, sr: int) -> PitchResult:
-        return pitch.detect(frame, sr)
+        result = pitch.detect(frame, sr)
+        if result.freq_hz is None:
+            return result
+        # lag-domain YIN cannot tell T from T/k when the fundamental is a
+        # few percent of the energy (oboe, low brass); one spectral
+        # cross-check restores it
+        freq = restore_weak_fundamental(frame, sr, result.freq_hz)
+        if freq == result.freq_hz:
+            return result
+        return PitchResult(freq_hz=freq, confidence=result.confidence)
 
 
 class SpectralDetector:
