@@ -88,8 +88,18 @@ def _prefer_smallest_period(
     under noise. Among dips comparably deep to the global minimum, the one at
     the smallest lag (checked at each integer divisor of the minimum's lag)
     is the true period.
+
+    Dip depths are compared at their parabola-interpolated minima, not at
+    sampled lags: a non-integer true period pays a quantization penalty at
+    lag 1*T that near-integer higher multiples don't, which would make any
+    sampled-value comparison systematically unfair to the true period.
     """
-    accept = max(threshold, cmndf[i] + 0.08)
+    # Margin trade-off, measured on the fixture suite: larger admits true
+    # periods whose dip an interfering partial inflated (octave-down fix),
+    # but starts accepting false small-lag dips on clean note transitions.
+    # 0.08 keeps clean recordings error-free; strong non-harmonic
+    # interference (see the xfail in test_real_audio) is a known limitation.
+    accept = max(threshold, _interpolated_dip(cmndf, i) + 0.08)
     for k in range(int(i / tau_lo), 1, -1):  # smallest candidate lag first
         center = i / k
         lo = max(tau_lo, int(center) - 2)
@@ -100,9 +110,43 @@ def _prefer_smallest_period(
             j += 1
         while j - 1 >= tau_lo and cmndf[j - 1] < cmndf[j]:
             j -= 1
-        if cmndf[j] < accept:
+        if _interpolated_dip(cmndf, j) < accept and _is_true_period(
+            cmndf, j, k, tau_hi, accept
+        ):
             return j
     return i
+
+
+def _is_true_period(cmndf: np.ndarray, j: int, k: int, tau_hi: int, accept: float) -> bool:
+    """A real period dips at EVERY multiple of its lag. A dip at lag j that is
+    an artifact of period k*j (e.g. the half-period dip a strong interfering
+    partial carves out) has no dip at multiples of j that aren't multiples of
+    k*j — so probe the smallest such multiple: 3j when k is even, 2j when odd.
+    """
+    # probe 2j, except for k == 2 where 2j == k*j is the global minimum
+    # itself and proves nothing (for any other k, 2j is not a multiple of k*j)
+    m = 3 if k == 2 else 2
+    probe = m * j
+    if probe >= tau_hi:
+        return True  # out of range, nothing to disprove the candidate with
+    lo, hi = probe - 2, probe + 3
+    p = lo + int(np.argmin(cmndf[lo:hi]))
+    while p + 1 < tau_hi and cmndf[p + 1] < cmndf[p]:
+        p += 1
+    while p - 1 > 0 and cmndf[p - 1] < cmndf[p]:
+        p -= 1
+    return _interpolated_dip(cmndf, p) < accept
+
+
+def _interpolated_dip(cmndf: np.ndarray, i: int) -> float:
+    """Depth of the local minimum around i, parabola-interpolated."""
+    if i <= 0 or i + 1 >= len(cmndf):
+        return float(cmndf[i])
+    a, b, c = float(cmndf[i - 1]), float(cmndf[i]), float(cmndf[i + 1])
+    denom = a - 2 * b + c
+    if denom <= 0:
+        return b
+    return max(0.0, b - (a - c) ** 2 / (8 * denom))
 
 
 def _refine_at_higher_lag(d: np.ndarray, tau: float, w: int) -> float:
