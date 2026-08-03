@@ -49,7 +49,4 @@ class SpectralDetector:
         return PitchResult(freq_hz=freq, confidence=confidence)
 
 
-DETECTORS: tuple[type[YinDetector] | type[SpectralDetector], ...] = (
-    YinDetector,
-    SpectralDetector,
-)
+DETECTORS: tuple[type[PitchDetector], ...] = (YinDetector, SpectralDetector)

@@ -14,6 +14,8 @@ from tuner.app.main_window import MainWindow
 
 
 class NullAudioInput:
+    # intentionally not tests.fakes.FakeAudioInput: this script runs as a
+    # bare subprocess where the tests package is not on sys.path
     def list_devices(self):
         return []
 
