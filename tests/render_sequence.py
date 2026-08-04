@@ -12,6 +12,10 @@ from the sequence tests).
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+if __package__ in (None, ""):  # run as a plain script from any cwd
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import soundfile as sf
 
