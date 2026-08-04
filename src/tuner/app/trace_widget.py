@@ -1,13 +1,16 @@
-"""Scrolling pitch trace: cent deviation over the last few seconds.
+"""Scrolling pitch trace: cent deviation of recent readings.
 
-Each reading plots its own note's cent deviation (same quantity as the
-meter needle), so a steady tone draws a flat line, vibrato draws its wave,
-and silence leaves a gap.
+- y axis: cent deviation from each reading's own note — center line is
+  "in tune" (0¢), full scale ±50¢.
+- x axis: reading count, not wall time — when there is no input the trace
+  freezes instead of scrolling away (silence contributes a single gap).
+- note changes draw a boundary line labeled with the new note ("B3"), and
+  the leftmost visible segment is labeled too, so the wave is always
+  attributable to a note.
 """
 
 from __future__ import annotations
 
-import time
 from collections import deque
 
 from PySide6.QtCore import QPointF, Qt
@@ -17,32 +20,33 @@ from PySide6.QtWidgets import QWidget
 from tuner.app.engine import TunerReading
 from tuner.core.tracker import State
 
-SPAN_S = 6.0  # visible history
 RANGE_CENTS = 50.0
+MAX_POINTS = 1000  # ~6s of continuous readings at the default hop
 
 BACKGROUND = QColor("#2f3542")
 CENTER_LINE = QColor("#5a8a3a")
 GUIDE_LINE = QColor("#46536b")
 TRACE = QColor("#9ec3ef")
+LABEL = QColor("#8fa8c7")
+AXIS_TEXT = QColor("#55627a")
+
+_GAP = (None, None)
 
 
 class PitchTraceWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._points: deque[tuple[float, float | None]] = deque()
+        # (cents, note_label); a single (None, None) entry marks silence
+        self._points: deque[tuple[float | None, str | None]] = deque(maxlen=MAX_POINTS)
         self.setFixedHeight(90)
 
     def add_reading(self, reading: TunerReading) -> None:
-        now = time.monotonic()
-        cents = (
-            reading.note.cents
-            if reading.state is State.OK and reading.note is not None
-            else None
-        )
-        self._points.append((now, cents))
-        cutoff = now - SPAN_S
-        while self._points and self._points[0][0] < cutoff:
-            self._points.popleft()
+        if reading.state is State.OK and reading.note is not None:
+            self._points.append((reading.note.cents, reading.note.label))
+        elif self._points and self._points[-1] != _GAP:
+            self._points.append(_GAP)  # one gap, then freeze until sound returns
+        else:
+            return  # nothing changed; do not repaint either
         self.update()
 
     def paintEvent(self, event) -> None:
@@ -51,25 +55,51 @@ class PitchTraceWidget(QWidget):
         painter.fillRect(self.rect(), BACKGROUND)
         w, h = self.width(), self.height()
 
-        for cents, color in ((25.0, GUIDE_LINE), (-25.0, GUIDE_LINE), (0.0, CENTER_LINE)):
-            y = h / 2 - cents / RANGE_CENTS * (h / 2 - 4)
-            painter.setPen(QPen(color, 1))
-            painter.drawLine(0, int(y), w, int(y))
-
-        if not self._points:
-            return
-        now = time.monotonic()
-        painter.setPen(QPen(TRACE, 1.6))
-        segment: list[QPointF] = []
-        for t, cents in self._points:
-            if cents is None:
-                if len(segment) > 1:
-                    painter.drawPolyline(segment)
-                segment = []
-                continue
-            x = (t - now + SPAN_S) / SPAN_S * w
+        def y_at(cents: float) -> float:
             clamped = max(-RANGE_CENTS, min(RANGE_CENTS, cents))
-            y = h / 2 - clamped / RANGE_CENTS * (h / 2 - 4)
-            segment.append(QPointF(x, y))
-        if len(segment) > 1:
-            painter.drawPolyline(segment)
+            return h / 2 - clamped / RANGE_CENTS * (h / 2 - 4)
+
+        for cents, color in ((25.0, GUIDE_LINE), (-25.0, GUIDE_LINE), (0.0, CENTER_LINE)):
+            painter.setPen(QPen(color, 1))
+            painter.drawLine(0, int(y_at(cents)), w, int(y_at(cents)))
+
+        font = self.font()
+        font.setPointSize(9)
+        painter.setFont(font)
+        painter.setPen(AXIS_TEXT)
+        painter.drawText(4, int(y_at(RANGE_CENTS)) + 10, "+50")
+        painter.drawText(4, int(y_at(0)) - 3, "0")
+        painter.drawText(4, int(y_at(-RANGE_CENTS)) - 2, "-50")
+
+        points = list(self._points)
+        if not points:
+            return
+        step = w / MAX_POINTS
+        x0 = w - len(points) * step  # newest reading pinned to the right edge
+
+        # group into segments of one note (gaps and label changes split)
+        segments: list[tuple[str | None, list[QPointF]]] = []
+        for i, (cents, label) in enumerate(points):
+            if cents is None:
+                segments.append((None, []))
+                continue
+            if not segments or segments[-1][0] != label:
+                segments.append((label, []))
+            segments[-1][1].append(QPointF(x0 + i * step, y_at(cents)))
+
+        min_label_points = 8  # ~50ms; transition flicker doesn't earn a label
+        labeled_before = False
+        for label, pts in segments:
+            if len(pts) > 1:
+                painter.setPen(QPen(TRACE, 1.6))
+                painter.drawPolyline(pts)
+            if label is None:
+                continue
+            if len(pts) >= min_label_points:
+                x = pts[0].x()
+                if labeled_before:  # a change line; the first label needs none
+                    painter.setPen(QPen(GUIDE_LINE, 1, Qt.PenStyle.DashLine))
+                    painter.drawLine(int(x), 0, int(x), h)
+                painter.setPen(LABEL)
+                painter.drawText(int(x) + 3, 12, label)
+                labeled_before = True

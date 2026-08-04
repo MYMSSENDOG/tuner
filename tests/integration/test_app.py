@@ -91,23 +91,24 @@ def test_meter_holds_last_value_after_silence(qapp):
     assert display is None and not ghost
 
 
-def test_trace_records_readings_and_expires_old(qapp):
-    import time
-
+def test_trace_freezes_on_silence_and_tracks_note_labels(qapp):
     from tuner.app.engine import TunerReading
-    from tuner.app.trace_widget import SPAN_S, PitchTraceWidget
+    from tuner.app.trace_widget import PitchTraceWidget
     from tuner.core.notes import freq_to_note
 
     trace = PitchTraceWidget()
     trace.add_reading(TunerReading(state=State.OK, note=freq_to_note(441.0)))
-    trace.add_reading(TunerReading(state=State.SILENT, note=None))
-    assert len(trace._points) == 2
-    assert trace._points[0][1] is not None  # pitch sample
-    assert trace._points[1][1] is None  # silence gap
+    trace.add_reading(TunerReading(state=State.OK, note=freq_to_note(494.0)))  # A4 -> B4
+    assert [label for _, label in trace._points] == ["A4", "B4"]
 
-    trace._points.appendleft((time.monotonic() - SPAN_S - 1, 0.0))
-    trace.add_reading(TunerReading(state=State.OK, note=freq_to_note(440.0)))
-    assert all(t > time.monotonic() - SPAN_S for t, _ in trace._points)
+    # silence contributes exactly one gap, then the trace freezes
+    for _ in range(10):
+        trace.add_reading(TunerReading(state=State.SILENT, note=None))
+    assert len(trace._points) == 3
+    assert trace._points[-1] == (None, None)
+
+    trace.add_reading(TunerReading(state=State.OK, note=freq_to_note(494.5)))
+    assert len(trace._points) == 4  # resumes when sound returns
 
 
 class TestSettingsPersistence:
