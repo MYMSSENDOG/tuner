@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from tuner.app.engine import TunerEngine, TunerReading
 from tuner.app.meter_widget import MeterWidget
+from tuner.app.trace_widget import PitchTraceWidget
 from tuner.audio.input import AudioInput
 from tuner.core.detector import DETECTORS
 
@@ -94,9 +95,11 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
         layout.addLayout(controls)
         layout.addWidget(self._meter, stretch=1)
+        self._trace = PitchTraceWidget()
+        layout.addWidget(self._trace)
         central.setStyleSheet("background-color: #3b4252; color: #c7d2e3;")
         self.setCentralWidget(central)
-        self.resize(520, 560)
+        self.resize(520, 650)
         self._restore_settings()
 
     def start(self) -> None:
@@ -139,6 +142,7 @@ class MainWindow(QMainWindow):
 
     def _on_reading(self, reading: TunerReading) -> None:
         self._meter.set_reading(reading)
+        self._trace.add_reading(reading)
 
     def _on_detector_changed(self) -> None:
         # the audio thread must not be mid-callback while the buffer is swapped

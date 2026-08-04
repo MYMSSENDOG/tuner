@@ -91,6 +91,25 @@ def test_meter_holds_last_value_after_silence(qapp):
     assert display is None and not ghost
 
 
+def test_trace_records_readings_and_expires_old(qapp):
+    import time
+
+    from tuner.app.engine import TunerReading
+    from tuner.app.trace_widget import SPAN_S, PitchTraceWidget
+    from tuner.core.notes import freq_to_note
+
+    trace = PitchTraceWidget()
+    trace.add_reading(TunerReading(state=State.OK, note=freq_to_note(441.0)))
+    trace.add_reading(TunerReading(state=State.SILENT, note=None))
+    assert len(trace._points) == 2
+    assert trace._points[0][1] is not None  # pitch sample
+    assert trace._points[1][1] is None  # silence gap
+
+    trace._points.appendleft((time.monotonic() - SPAN_S - 1, 0.0))
+    trace.add_reading(TunerReading(state=State.OK, note=freq_to_note(440.0)))
+    assert all(t > time.monotonic() - SPAN_S for t, _ in trace._points)
+
+
 class TestSettingsPersistence:
     DEVICES = (
         InputDevice(id=3, name="Mic A", is_default=False),
