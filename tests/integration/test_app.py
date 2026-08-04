@@ -13,13 +13,22 @@ from tests.fakes import FakeAudioInput  # noqa: E402
 from tests.synth import tone  # noqa: E402
 
 
-def make_window(fake=None):
+@pytest.fixture
+def make_window(qapp, tmp_path):
+    """Window factory with per-test isolated settings — tests must never
+    touch (or be influenced by) the real user QSettings."""
+    from PySide6.QtCore import QSettings
+
     from tuner.app.main_window import MainWindow
 
-    return MainWindow(fake if fake is not None else FakeAudioInput(tone(440.0, 0.05)))
+    def factory(fake=None):
+        settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+        return MainWindow(fake if fake is not None else FakeAudioInput(tone(440.0, 0.05)), settings)
+
+    return factory
 
 
-def test_window_end_to_end(qapp):
+def test_window_end_to_end(qapp, make_window):
     fake = FakeAudioInput(tone(440.0, 0.3, instrument="violin"))
     window = make_window(fake)
     window.show()
@@ -34,7 +43,7 @@ def test_window_end_to_end(qapp):
     window.close()
 
 
-def test_always_on_top_flag(qapp):
+def test_always_on_top_flag(make_window):
     window = make_window()
     window._pin_check.setChecked(True)
     assert window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
@@ -43,11 +52,68 @@ def test_always_on_top_flag(qapp):
     window.close()
 
 
-def test_a4_spinbox_updates_engine(qapp):
+def test_a4_spinbox_updates_engine(make_window):
     window = make_window()
     window._a4_spin.setValue(442)
     assert window._engine.a4_hz == 442.0
     window.close()
+
+
+class TestSettingsPersistence:
+    DEVICES = (
+        InputDevice(id=3, name="Mic A", is_default=False),
+        InputDevice(id=7, name="Mic B", is_default=True),
+    )
+
+    def make_settings(self, tmp_path):
+        from PySide6.QtCore import QSettings
+
+        return QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+
+    def test_settings_roundtrip(self, qapp, tmp_path):
+        from tuner.app.main_window import MainWindow
+
+        window = MainWindow(FakeAudioInput(devices=self.DEVICES), self.make_settings(tmp_path))
+        window._a4_spin.setValue(442)
+        window._device_combo.setCurrentIndex(window._device_combo.findText("Mic A"))
+        window._detector_combo.setCurrentIndex(1)
+        window._pin_check.setChecked(True)
+        window.close()
+
+        restored = MainWindow(FakeAudioInput(devices=self.DEVICES), self.make_settings(tmp_path))
+        assert restored._a4_spin.value() == 442
+        assert restored._engine.a4_hz == 442.0
+        assert restored._device_combo.currentText() == "Mic A"
+        assert restored._detector_combo.currentIndex() == 1
+        assert restored._pin_check.isChecked()
+        assert restored.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+        restored.close()
+
+    def test_restore_does_not_start_stream(self, qapp, tmp_path):
+        """Restoring device/detector must not open the audio stream early."""
+        from tuner.app.main_window import MainWindow
+
+        first = MainWindow(FakeAudioInput(devices=self.DEVICES), self.make_settings(tmp_path))
+        first._device_combo.setCurrentIndex(0)
+        first._detector_combo.setCurrentIndex(1)
+        first.close()
+
+        fake = FakeAudioInput(devices=self.DEVICES)
+        restored = MainWindow(fake, self.make_settings(tmp_path))
+        assert fake.started_with == []
+        restored.start()
+        assert fake.started_with == [3]  # the restored device, started once
+        restored.close()
+
+    def test_missing_device_falls_back_to_default(self, qapp, tmp_path):
+        from tuner.app.main_window import MainWindow
+
+        settings = self.make_settings(tmp_path)
+        settings.setValue("device_name", "Unplugged Mic")
+        settings.sync()
+        window = MainWindow(FakeAudioInput(devices=self.DEVICES), self.make_settings(tmp_path))
+        assert window._device_combo.currentText() == "Mic B"  # system default
+        window.close()
 
 
 class TestDeviceSelection:
@@ -56,7 +122,7 @@ class TestDeviceSelection:
         InputDevice(id=7, name="Mic B", is_default=True),
     )
 
-    def test_default_device_preselected_and_used(self, qapp):
+    def test_default_device_preselected_and_used(self, make_window):
         fake = FakeAudioInput(devices=self.DEVICES)
         window = make_window(fake)
         assert window._device_combo.currentText() == "Mic B"
@@ -64,7 +130,7 @@ class TestDeviceSelection:
         assert fake.started_with == [7]
         window.close()
 
-    def test_switching_device_restarts_stream(self, qapp):
+    def test_switching_device_restarts_stream(self, make_window):
         fake = FakeAudioInput(devices=self.DEVICES)
         window = make_window(fake)
         window.start()
@@ -75,7 +141,7 @@ class TestDeviceSelection:
         assert fake.started_with == [7, 3]
         window.close()
 
-    def test_switch_resets_pipeline_state(self, qapp):
+    def test_switch_resets_pipeline_state(self, qapp, make_window):
         """Buffered audio from the old device must not leak into the new stream."""
         fake = FakeAudioInput(tone(440.0, 0.2), devices=self.DEVICES)
         window = make_window(fake)

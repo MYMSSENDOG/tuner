@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, QSettings, QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -27,9 +27,10 @@ class _ReadingBridge(QObject):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, audio_input: AudioInput):
+    def __init__(self, audio_input: AudioInput, settings: QSettings | None = None):
         super().__init__()
         self.setWindowTitle("Tuner")
+        self._settings = settings if settings is not None else QSettings("tuner", "tuner")
 
         self._bridge = _ReadingBridge()
         self._engine = TunerEngine(audio_input, self._bridge.reading.emit)
@@ -80,13 +81,45 @@ class MainWindow(QMainWindow):
         central.setStyleSheet("background-color: #3b4252; color: #c7d2e3;")
         self.setCentralWidget(central)
         self.resize(520, 560)
+        self._restore_settings()
 
     def start(self) -> None:
         self._engine.start(self._device_combo.currentData())
 
     def closeEvent(self, event) -> None:
+        self._save_settings()
         self._engine.stop()
         super().closeEvent(event)
+
+    def _restore_settings(self) -> None:
+        s = self._settings
+        self._a4_spin.setValue(int(s.value("a4_hz", 440)))  # signal applies it to the engine
+
+        device_index = self._device_combo.findText(str(s.value("device_name", "")))
+        if device_index >= 0:  # the stored device may be unplugged; ids aren't stable either
+            with QSignalBlocker(self._device_combo):  # engine isn't started yet — no restart
+                self._device_combo.setCurrentIndex(device_index)
+
+        detector_index = self._detector_combo.findText(str(s.value("detector_name", "")))
+        if detector_index >= 0:
+            with QSignalBlocker(self._detector_combo):
+                self._detector_combo.setCurrentIndex(detector_index)
+            self._engine.set_detector(self._detector_combo.currentData()())
+
+        self._pin_check.setChecked(s.value("always_on_top", False, type=bool))
+
+        geometry = s.value("geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+
+    def _save_settings(self) -> None:
+        s = self._settings
+        s.setValue("a4_hz", self._a4_spin.value())
+        s.setValue("device_name", self._device_combo.currentText())
+        s.setValue("detector_name", self._detector_combo.currentText())
+        s.setValue("always_on_top", self._pin_check.isChecked())
+        s.setValue("geometry", self.saveGeometry())
+        s.sync()
 
     def _on_reading(self, reading: TunerReading) -> None:
         self._meter.set_reading(reading)
@@ -103,4 +136,5 @@ class MainWindow(QMainWindow):
 
     def _on_pin_toggled(self, checked: bool) -> None:
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, checked)
-        self.show()  # re-apply window flags
+        if self.isVisible():
+            self.show()  # changing flags on a visible window hides it; re-show
