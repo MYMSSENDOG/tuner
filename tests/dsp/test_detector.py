@@ -42,6 +42,20 @@ def test_detector_realtime_budget(detector_cls):
     assert per_call < budget * 0.5
 
 
+@pytest.mark.parametrize("detector_cls", DETECTORS, ids=lambda c: c.__name__)
+def test_input_level_gate(detector_cls):
+    """Quieter than -40dBFS is 'not being played at': bow tails and room
+    rumble carry trackable pitch and flip the display without a gate."""
+    detector = detector_cls()
+    quiet = tone(440.0, 0.2, instrument="violin") * 10 ** (-50 / 20)
+    frame = quiet[: detector.frame_size]
+    assert detector.detect(frame, SR).freq_hz is None
+
+    audible = tone(440.0, 0.2, instrument="violin") * 10 ** (-30 / 20)
+    result = detector.detect(audible[: detector.frame_size], SR)
+    assert result.freq_hz is not None
+
+
 def test_engine_accepts_spectral_detector():
     from tuner.app.engine import TunerEngine
     from tuner.core.tracker import State

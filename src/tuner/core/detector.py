@@ -14,6 +14,18 @@ from tuner.core.pitch import PitchResult
 from tuner.core.spectral import estimate_f0, restore_weak_fundamental
 
 
+# Below this input level a frame is "not being played at" — bow-stroke tails
+# and room rumble still carry trackable pitch, and without a gate the display
+# flips wildly between them (measured on the violin scale recording: 125
+# note changes for 5 actual notes; -40dBFS yields exactly 5, -35 starts
+# eating real notes).
+INPUT_GATE_RMS = 10.0 ** (-40.0 / 20.0)
+
+
+def _gated(frame: np.ndarray) -> bool:
+    return float(np.sqrt(np.mean(frame * frame))) < INPUT_GATE_RMS
+
+
 class PitchDetector(Protocol):
     name: str
     frame_size: int  # samples of context each detection needs
@@ -30,6 +42,8 @@ class YinDetector:
     hop_size = pitch.DEFAULT_HOP_SIZE
 
     def detect(self, frame: np.ndarray, sr: int) -> PitchResult:
+        if _gated(frame):
+            return PitchResult(None, 0.0)
         result = pitch.detect(frame, sr)
         if result.freq_hz is None:
             return result
@@ -54,6 +68,8 @@ class SpectralDetector:
     hop_size = 1024  # heavier per detection; ~23ms budget at 44.1kHz
 
     def detect(self, frame: np.ndarray, sr: int) -> PitchResult:
+        if _gated(frame):
+            return PitchResult(None, 0.0)
         freq, confidence = estimate_f0(frame, sr, dtft_rounds=3)
         return PitchResult(freq_hz=freq, confidence=confidence)
 
