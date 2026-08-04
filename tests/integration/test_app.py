@@ -52,15 +52,18 @@ def test_always_on_top_flag(make_window):
     window.close()
 
 
-def test_pin_toggle_keeps_window_visible(make_window):
-    """setWindowFlag hides the window as a side effect; toggling the pin on a
-    visible window must re-show it (regression: the app quit on toggle)."""
+def test_pin_toggle_on_visible_window(make_window):
+    """On a shown window the pin flips the flag on the native window handle
+    (no widget-level flag change: that recreates the platform window, which
+    once flashed the app off screen / quit it entirely)."""
     window = make_window()
     window.show()
     window._pin_check.setChecked(True)
     assert window.isVisible()
+    assert window.windowHandle().flags() & Qt.WindowType.WindowStaysOnTopHint
     window._pin_check.setChecked(False)
     assert window.isVisible()
+    assert not window.windowHandle().flags() & Qt.WindowType.WindowStaysOnTopHint
     window.close()
 
 

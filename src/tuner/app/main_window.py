@@ -160,10 +160,23 @@ class MainWindow(QMainWindow):
         self._engine.start(self._device_combo.currentData())
 
     def _on_pin_toggled(self, checked: bool) -> None:
-        # setWindowFlag() hides the window as a side effect, so visibility
-        # must be captured BEFORE the call — checking after skips the re-show
-        # and the app exits with its last window closed
-        was_visible = self.isVisible()
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, checked)
-        if was_visible:
-            self.show()
+        handle = self.windowHandle()
+        if handle is not None:
+            # flip the flag on the native window directly: QWidget.setWindowFlag
+            # destroys and recreates the platform window, which flashes the
+            # whole app off/on screen. The QWindow path just adjusts the OS
+            # window level in place.
+            flags = handle.flags()
+            if checked:
+                flags |= Qt.WindowType.WindowStaysOnTopHint
+            else:
+                flags &= ~Qt.WindowType.WindowStaysOnTopHint
+            handle.setFlags(flags)
+        else:
+            # window not created yet (settings restore during __init__) —
+            # setWindowFlag is fine here, and its hide side effect needs the
+            # pre-call visibility to decide on a re-show
+            was_visible = self.isVisible()
+            self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, checked)
+            if was_visible:
+                self.show()
