@@ -1,8 +1,8 @@
 # Note bank (stitched-sequence source material)
 
 One trimmed clip per chromatic note per instrument (violin G3-A5,
-cello C2-A3, flute C4-C6, trumpet G3-C5), from the University of Iowa MIS
-collection. `bank.json` carries each clip's per-window pitch timeline
+cello C2-A3, flute C4-C6, trumpet G3-C5, oboe F4-F5 for the Tchaikovsky
+excerpt), from the University of Iowa MIS collection. `bank.json` carries each clip's per-window pitch timeline
 (offline annotator), so sequences stitched from these clips inherit exact,
 vibrato-aware ground truth with no annotation cost at test time.
 

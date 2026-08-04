@@ -129,3 +129,23 @@ def ode_to_joy(root: str) -> Melody:
     degrees = [2, 2, 3, 4, 4, 3, 2, 1, 0, 0, 1, 2, 2, 1, 1]
     durs = [0.6] * 12 + [0.8, 0.6, 1.0]
     return from_degrees(root, degrees, durs)
+
+
+def tchaikovsky4_oboe() -> Melody:
+    """Symphony No. 4, II (Andantino in modo di canzona) opening oboe solo,
+    B-flat minor — the first three phrases, up to the F5 peak. Pitches
+    verified against a published arrangement (8notes MIDI, transposed back
+    from C minor to the original key); rhythm stretched so the grading
+    framework's 0.3s attack exclusion still leaves judged windows per note.
+    """
+    e, s = 0.65, 0.45
+    # fmt: off
+    return [
+        ("Db5", e), ("C5", e), ("Bb4", e), ("A4", e), ("Bb4", e),
+        ("F5", s), ("F5", e), ("C5", e), ("Eb5", e), ("Db5", e),
+        ("C5", e), ("A4", e), ("Bb4", e),
+        ("C5", s), ("C5", e), ("F4", e), ("F4", e), ("G4", e),
+        ("A4", e), ("Bb4", e), ("C5", e), ("Db5", s),
+        ("F5", 1.2),
+    ]
+    # fmt: on

@@ -25,6 +25,7 @@ from tests.sequence_bank import (
     chromatic_scale,
     major_scale,
     ode_to_joy,
+    tchaikovsky4_oboe,
     twinkle,
 )
 
@@ -56,20 +57,33 @@ CASES = [
 ]
 
 
-@pytest.mark.parametrize("instrument,pattern", CASES)
-def test_sequence(instrument, pattern):
-    root, chromatic_range = INSTRUMENTS[instrument]
-    melody = PATTERNS[pattern](root, chromatic_range)
+def run_sequence_case(instrument: str, melody, label: str) -> None:
     signal, sr, ref = build_sequence(instrument, melody)
-
     errors = compare_app_to_reference(signal, sr, 0.05, ref)
     labeled = [w.freq_hz for w in ref if w.freq_hz is not None]
     low_register = float(np.median(labeled)) < LOW_REGISTER_HZ
     assert_pipeline_agreement(
         errors,
-        f"{instrument}-{pattern}",
+        label,
         clean_tolerance=LOW_REGISTER_TOLERANCE_CENTS if low_register else TOLERANCE_CENTS,
     )
+
+
+@pytest.mark.parametrize("instrument,pattern", CASES)
+def test_sequence(instrument, pattern):
+    root, chromatic_range = INSTRUMENTS[instrument]
+    melody = PATTERNS[pattern](root, chromatic_range)
+    run_sequence_case(instrument, melody, f"{instrument}-{pattern}")
+
+
+EXCERPTS = [
+    pytest.param("oboe", tchaikovsky4_oboe, id="oboe-tchaikovsky4-andantino"),
+]
+
+
+@pytest.mark.parametrize("instrument,melody_fn", EXCERPTS)
+def test_famous_excerpt(instrument, melody_fn):
+    run_sequence_case(instrument, melody_fn(), f"{instrument}-{melody_fn.__name__}")
 
 
 def test_bank_covers_declared_ranges():

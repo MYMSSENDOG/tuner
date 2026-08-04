@@ -114,7 +114,7 @@ def divide_to_true_f0(
 
 
 def restore_weak_fundamental(
-    frame: np.ndarray, sr: int, f0_hz: float, fmin: float = 60.0, min_gain: float = 0.02
+    frame: np.ndarray, sr: int, f0_hz: float, fmin: float = 60.0, min_gain: float = 0.012
 ) -> float:
     """Spectral cross-check for time-domain pitch estimates.
 
@@ -122,6 +122,11 @@ def restore_weak_fundamental(
     low brass) is nearly periodic at the dominant harmonic's lag, so
     lag-domain dips cannot tell T from T/k — but the weak partials between
     the dominant harmonic's multiples are plainly visible spectrally.
+
+    min_gain 1.2%: oboe F5's 2nd harmonic is 8x its fundamental, leaving
+    only ~1.8% of energy in the odd combs — a 2% gate missed it by a hair.
+    Clean signals' broadband floor contributes ~0.3%, so 1.2% keeps margin
+    on both sides (noise is handled by the adaptive term, not this floor).
     """
     x = np.asarray(frame, dtype=np.float64)
     x = x * np.hanning(len(x))
