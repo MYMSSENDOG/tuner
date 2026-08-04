@@ -61,8 +61,10 @@ class MainWindow(QMainWindow):
         controls.addWidget(QLabel("A4"))
         self._a4_spin = QSpinBox()
         self._a4_spin.setRange(415, 466)
-        self._a4_spin.setValue(440)
+        self._a4_spin.setValue(442)
         self._a4_spin.setSuffix(" Hz")
+        self._a4_spin.lineEdit().setReadOnly(True)  # up/down buttons only, 1Hz steps
+        self._a4_spin.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._a4_spin.valueChanged.connect(lambda v: self._engine.set_a4(float(v)))
         controls.addWidget(self._a4_spin)
 
@@ -112,7 +114,10 @@ class MainWindow(QMainWindow):
 
     def _restore_settings(self) -> None:
         s = self._settings
-        self._a4_spin.setValue(int(s.value("a4_hz", 440)))  # signal applies it to the engine
+        self._a4_spin.setValue(int(s.value("a4_hz", 442)))
+        # explicit sync: setValue emits no signal when the value is unchanged
+        # (e.g. stored value == default), and the ctor's setValue predates connect
+        self._engine.set_a4(float(self._a4_spin.value()))
 
         device_index = self._device_combo.findText(str(s.value("device_name", "")))
         if device_index >= 0:  # the stored device may be unplugged; ids aren't stable either

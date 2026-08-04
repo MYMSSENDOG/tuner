@@ -64,9 +64,14 @@ def test_pin_toggle_keeps_window_visible(make_window):
     window.close()
 
 
-def test_a4_spinbox_updates_engine(make_window):
+def test_a4_defaults_and_button_only(make_window):
     window = make_window()
-    window._a4_spin.setValue(442)
+    assert window._a4_spin.value() == 442  # product default
+    assert window._engine.a4_hz == 442.0
+    assert window._a4_spin.lineEdit().isReadOnly()  # arrows only, no typing
+    window._a4_spin.stepUp()
+    assert window._a4_spin.value() == 443 and window._engine.a4_hz == 443.0
+    window._a4_spin.stepDown()
     assert window._engine.a4_hz == 442.0
     window.close()
 
@@ -126,15 +131,15 @@ class TestSettingsPersistence:
         from tuner.app.main_window import MainWindow
 
         window = MainWindow(FakeAudioInput(devices=self.DEVICES), self.make_settings(tmp_path))
-        window._a4_spin.setValue(442)
+        window._a4_spin.setValue(441)
         window._device_combo.setCurrentIndex(window._device_combo.findText("Mic A"))
         window._detector_combo.setCurrentIndex(1)
         window._pin_check.setChecked(True)
         window.close()
 
         restored = MainWindow(FakeAudioInput(devices=self.DEVICES), self.make_settings(tmp_path))
-        assert restored._a4_spin.value() == 442
-        assert restored._engine.a4_hz == 442.0
+        assert restored._a4_spin.value() == 441
+        assert restored._engine.a4_hz == 441.0
         assert restored._device_combo.currentText() == "Mic A"
         assert restored._detector_combo.currentIndex() == 1
         assert restored._pin_check.isChecked()
