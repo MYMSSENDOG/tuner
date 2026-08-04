@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QSettings, QSignalBlocker, Qt, Signal
+import signal
+
+from PySide6.QtCore import QObject, QSettings, QSignalBlocker, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -18,6 +20,20 @@ from tuner.app.engine import TunerEngine, TunerReading
 from tuner.app.meter_widget import MeterWidget
 from tuner.audio.input import AudioInput
 from tuner.core.detector import DETECTORS
+
+
+def enable_ctrl_c(window: QMainWindow) -> QTimer:
+    """Make Ctrl+C close the window (and thus quit cleanly via closeEvent).
+
+    Python's SIGINT handler only runs while the interpreter executes, and
+    Qt's event loop blocks in C++ — the returned timer periodically yields
+    control so the handler gets a chance. Keep a reference to the timer.
+    """
+    signal.signal(signal.SIGINT, lambda *_: window.close())
+    timer = QTimer(window)
+    timer.timeout.connect(lambda: None)
+    timer.start(200)
+    return timer
 
 
 class _ReadingBridge(QObject):

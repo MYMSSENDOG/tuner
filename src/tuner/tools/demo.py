@@ -76,11 +76,12 @@ def main(argv: list[str] | None = None) -> int:
 
     from PySide6.QtWidgets import QApplication
 
-    from tuner.app.main_window import MainWindow
+    from tuner.app.main_window import MainWindow, enable_ctrl_c
 
     app = QApplication(sys.argv if argv is None else [sys.argv[0]])
     window = MainWindow(FilePlaybackInput(args.audio, loop=args.loop))
     window.setWindowTitle(f"Tuner — {args.audio}")
+    _sigint_timer = enable_ctrl_c(window)
     window.show()
     window.start()
     return app.exec()
