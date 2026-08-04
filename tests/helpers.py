@@ -45,6 +45,7 @@ def track_signal(
     signal: np.ndarray,
     sr: int = SR,
     detector=None,
+    tracker=None,
 ) -> list[tuple[float, float | None]]:
     """Feed signal through the real-time pipeline exactly as the engine does.
 
@@ -55,7 +56,7 @@ def track_signal(
     from tuner.core.tracker import PitchTracker
 
     detector = detector or YinDetector()
-    tracker = PitchTracker()
+    tracker = tracker or PitchTracker()
     frame_size = detector.frame_size
     out = []
     for start in range(0, len(signal) - frame_size + 1, detector.hop_size):

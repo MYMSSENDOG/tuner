@@ -59,7 +59,9 @@ class TunerEngine:
         self._audio.stop()
 
     def _reset_pipeline(self) -> None:
-        self._tracker = PitchTracker()
+        # dt drives the smoother; sample rate is only known after start(),
+        # but a wrong-by-10% dt (e.g. 48kHz devices) is immaterial to it
+        self._tracker = PitchTracker(dt_s=self._detector.hop_size / (self._sr or 44100))
         self._buffer = np.zeros(self._detector.frame_size)
         self._filled = 0
         self._pending = 0
