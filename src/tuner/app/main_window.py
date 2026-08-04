@@ -135,6 +135,10 @@ class MainWindow(QMainWindow):
         self._engine.start(self._device_combo.currentData())
 
     def _on_pin_toggled(self, checked: bool) -> None:
+        # setWindowFlag() hides the window as a side effect, so visibility
+        # must be captured BEFORE the call — checking after skips the re-show
+        # and the app exits with its last window closed
+        was_visible = self.isVisible()
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, checked)
-        if self.isVisible():
-            self.show()  # changing flags on a visible window hides it; re-show
+        if was_visible:
+            self.show()

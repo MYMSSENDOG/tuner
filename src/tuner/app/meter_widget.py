@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import time
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
@@ -26,15 +27,32 @@ ZONE_COLORS = {
 }
 
 
+HOLD_DISPLAY_S = 4.0  # keep the last pitch on screen (ghosted) after sound stops
+
+
 class MeterWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._reading: TunerReading | None = None
+        self._last_ok: TunerReading | None = None
+        self._last_ok_at = 0.0
         self.setMinimumSize(420, 420)
 
     def set_reading(self, reading: TunerReading) -> None:
         self._reading = reading
+        if reading.state is State.OK:
+            self._last_ok = reading
+            self._last_ok_at = time.monotonic()
         self.update()
+
+    def _display_reading(self) -> tuple[TunerReading | None, bool]:
+        """The reading to draw and whether it is a ghost (held after sound
+        stopped, so the player can still see where the last note landed)."""
+        if self._reading is not None and self._reading.state is State.OK:
+            return self._reading, False
+        if self._last_ok is not None and time.monotonic() - self._last_ok_at <= HOLD_DISPLAY_S:
+            return self._last_ok, True
+        return None, False
 
     def _font(self, point_size: int, bold: bool = False) -> QFont:
         # derive from the system default — a hardcoded family would silently
@@ -72,15 +90,19 @@ class MeterWidget(QWidget):
         painter.fillRect(self.rect(), BACKGROUND)
 
         pivot, radius = self._pivot_and_radius()
+        display, ghost = self._display_reading()
         self._draw_scale(painter, pivot, radius)
-        self._draw_header(painter)
-        self._draw_note_bar(painter)
+        self._draw_header(painter, display)
+        self._draw_note_bar(painter, display, ghost)
 
         reading = self._reading
-        if reading is not None and reading.state is State.OK and reading.note is not None:
-            self._draw_needle(painter, pivot, radius, reading.note.cents)
-            self._draw_cents_badge(painter, pivot, radius, reading.note.cents)
-        elif reading is not None and reading.state is State.NOISY:
+        if display is not None and display.note is not None:
+            if ghost:
+                painter.setOpacity(0.4)
+            self._draw_needle(painter, pivot, radius, display.note.cents)
+            self._draw_cents_badge(painter, pivot, radius, display.note.cents)
+            painter.setOpacity(1.0)
+        if reading is not None and reading.state is State.NOISY:
             painter.setPen(DIM_TEXT)
             painter.setFont(self._font(22, bold=True))
             painter.drawText(
@@ -121,26 +143,27 @@ class MeterWidget(QWidget):
         painter.setPen(QColor("#9ec3ef"))
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
 
-    def _draw_header(self, painter: QPainter) -> None:
-        reading = self._reading
-        if reading is None or reading.note is None:
+    def _draw_header(self, painter: QPainter, display: TunerReading | None) -> None:
+        if display is None or display.note is None:
             return
         painter.setPen(QColor("#6fa8dc"))
         painter.setFont(self._font(16, bold=True))
-        text = f"{reading.note.label}: {reading.note.freq_hz:.0f}Hz"
+        text = f"{display.note.label}: {display.note.freq_hz:.0f}Hz"
         painter.drawText(
             QRectF(0, 8, self.width(), 28), Qt.AlignmentFlag.AlignCenter, text
         )
 
-    def _draw_note_bar(self, painter: QPainter) -> None:
+    def _draw_note_bar(self, painter: QPainter, display: TunerReading | None, ghost: bool) -> None:
         bar_h = self._note_bar_height()
         rect = QRectF(0, self.height() - bar_h, self.width(), bar_h)
-        reading = self._reading
-        if reading is not None and reading.state is State.OK and reading.note is not None:
-            painter.fillRect(rect, ZONE_COLORS[zone_for_cents(reading.note.cents)])
+        if display is not None and display.note is not None:
+            if ghost:
+                painter.setOpacity(0.4)
+            painter.fillRect(rect, ZONE_COLORS[zone_for_cents(display.note.cents)])
             painter.setPen(QColor("#20301a"))
             painter.setFont(self._font(int(bar_h * 0.62), bold=True))
-            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, reading.note.name)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, display.note.name)
+            painter.setOpacity(1.0)
         else:
             painter.fillRect(rect, QColor("#333c4d"))
             painter.setPen(DIM_TEXT)

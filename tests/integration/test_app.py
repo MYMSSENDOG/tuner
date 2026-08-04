@@ -52,11 +52,43 @@ def test_always_on_top_flag(make_window):
     window.close()
 
 
+def test_pin_toggle_keeps_window_visible(make_window):
+    """setWindowFlag hides the window as a side effect; toggling the pin on a
+    visible window must re-show it (regression: the app quit on toggle)."""
+    window = make_window()
+    window.show()
+    window._pin_check.setChecked(True)
+    assert window.isVisible()
+    window._pin_check.setChecked(False)
+    assert window.isVisible()
+    window.close()
+
+
 def test_a4_spinbox_updates_engine(make_window):
     window = make_window()
     window._a4_spin.setValue(442)
     assert window._engine.a4_hz == 442.0
     window.close()
+
+
+def test_meter_holds_last_value_after_silence(qapp):
+    """After sound stops the meter keeps showing the last pitch as a ghost
+    for a few seconds instead of blanking instantly."""
+    from tuner.app.engine import TunerReading
+    from tuner.app.meter_widget import HOLD_DISPLAY_S, MeterWidget
+    from tuner.core.notes import freq_to_note
+
+    meter = MeterWidget()
+    ok = TunerReading(state=State.OK, note=freq_to_note(440.0))
+    meter.set_reading(ok)
+    meter.set_reading(TunerReading(state=State.SILENT, note=None))
+
+    display, ghost = meter._display_reading()
+    assert display is ok and ghost
+
+    meter._last_ok_at -= HOLD_DISPLAY_S + 1  # simulate the hold expiring
+    display, ghost = meter._display_reading()
+    assert display is None and not ghost
 
 
 class TestSettingsPersistence:
