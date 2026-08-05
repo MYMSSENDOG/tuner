@@ -33,5 +33,7 @@ python -m tuner.tools.add_noise 녹음.wav --snr 20  # 노이즈 변형 픽스�
 
 ## 문서
 
+- [음정 측정 파이프라인 상세](docs/pitch-pipeline.md) — 마이크부터 바늘까지 전 과정, 단계별 수치 근거
 - [프로젝트 구조](docs/ARCHITECTURE.md) — 레이어, 의존 규칙, 설계 결정, 확장 포인트
+- [스무딩 파라미터 튜닝 기록](docs/smoothing-tuning.md) — 그리드 스윕 실측과 채택 근거
 - [계획서](PLAN.md) — 최초 스펙과 테스트 전략
