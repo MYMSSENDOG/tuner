@@ -14,7 +14,7 @@ import numpy as np
 
 from tuner.audio.input import AudioInput
 from tuner.core.detector import PitchDetector, YinDetector
-from tuner.core.notes import Note, freq_to_note
+from tuner.core.notes import Note, NoteLatch
 from tuner.core.tracker import PitchTracker, State
 
 
@@ -59,6 +59,7 @@ class TunerEngine:
         self._audio.stop()
 
     def _reset_pipeline(self) -> None:
+        self._latch = NoteLatch()
         # dt drives the smoother; sample rate is only known after start(),
         # but a wrong-by-10% dt (e.g. 48kHz devices) is immaterial to it
         self._tracker = PitchTracker(dt_s=self._detector.hop_size / (self._sr or 44100))
@@ -77,5 +78,9 @@ class TunerEngine:
             return
         self._pending = 0
         tracked = self._tracker.update(self._detector.detect(self._buffer, self._sr))
-        note = freq_to_note(tracked.freq_hz, self._a4_hz) if tracked.freq_hz else None
+        if tracked.freq_hz:
+            note = self._latch.update(tracked.freq_hz, self._a4_hz)
+        else:
+            note = None
+            self._latch.reset()
         self._on_reading(TunerReading(state=tracked.state, note=note))

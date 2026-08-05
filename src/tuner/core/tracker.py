@@ -34,6 +34,10 @@ def _cents_between(f1: float, f2: float) -> float:
     return abs(1200.0 * math.log2(f1 / f2))
 
 
+# === display switch: set False to show every raw reading unsmoothed ===
+SMOOTHING_ENABLED = True
+
+
 class _OneEuro:
     """One-Euro filter (Casiez et al.): smoothing whose cutoff opens with the
     signal's speed — steady values get heavy smoothing (still needle), fast
@@ -92,7 +96,7 @@ class PitchTracker:
         self._hold_frames = hold_frames
         self._smoother = (
             _OneEuro(dt_s, smooth_min_cutoff_hz, smooth_beta)
-            if smooth_min_cutoff_hz is not None
+            if smooth_min_cutoff_hz is not None and SMOOTHING_ENABLED
             else None
         )
         self._freq: float | None = None
