@@ -18,10 +18,12 @@ class FakeAudioInput:
         signal: np.ndarray | None = None,
         block_size: int = 256,
         devices: tuple[InputDevice, ...] = (),
+        sr: int = SR,
     ):
         self._signal = signal if signal is not None else np.zeros(0)
         self._block_size = block_size
         self._devices = list(devices)
+        self._sr = sr
         self._callback = None
         self.started_with: list[int | None] = []
         self.stop_count = 0
@@ -32,7 +34,7 @@ class FakeAudioInput:
     def start(self, device_id, callback) -> int:
         self.started_with.append(device_id)
         self._callback = callback
-        return SR
+        return self._sr
 
     def stop(self) -> None:
         self.stop_count += 1
