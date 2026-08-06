@@ -35,7 +35,12 @@ def annotate(
     signal: np.ndarray,
     sr: int,
     window_s: float = 0.05,
-    fmin: float = 60.0,
+    # 45Hz reaches the bottom of the orchestral range that this estimator
+    # can actually resolve: measured on TinySOL, 58Hz lands within 6 cents
+    # and 49Hz is exact. Below ~45Hz its octave decision fails (the analysis
+    # bandwidth stops being narrow next to the harmonic spacing), so going
+    # lower would produce confident wrong answers rather than none.
+    fmin: float = 45.0,
     fmax: float = 3000.0,
     min_confidence: float = 0.5,
 ) -> list[RefWindow]:
