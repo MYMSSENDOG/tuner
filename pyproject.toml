@@ -23,7 +23,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m 'not crosscheck'"  # slow ground-truth audits are opt-in
 markers = [
     "e2e: needs real hardware (audio device) or a real display; skips itself when unavailable",
     "crosscheck: slow full-bank validation against an independent estimator (opt in)",

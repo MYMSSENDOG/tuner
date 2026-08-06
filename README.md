@@ -16,9 +16,9 @@ python -m tuner
 ## 테스트
 
 ```bash
-pytest                  # 전체 (e2e는 하드웨어 없으면 자체 skip)
-pytest -m "not e2e"     # CI와 동일: 헤드리스 스위트만
-pytest -m crosscheck    # 느린 전수 외부 교차검증 (pip install -e '.[crosscheck]')
+pytest                                    # 기본 (e2e는 하드웨어 없으면 자체 skip)
+pytest -m "not e2e and not crosscheck"    # CI와 동일: 헤드리스 스위트만
+pytest -m crosscheck                      # 느린 정답 감사 (pip install -e '.[crosscheck]')
 ```
 
 테스트 스위트는 합성 신호(정확도 ±2 cent, SNR 10dB 내성, 반응 ≤100ms,
