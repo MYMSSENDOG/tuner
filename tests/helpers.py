@@ -104,9 +104,12 @@ def compare_app_to_reference(
             return None
         return ref[i].freq_hz
 
+    from tuner.core.detector import YinDetector
+
+    center_offset_s = YinDetector.center_offset / sr
     errors = []
     for t_end, freq in track_signal(signal, sr):
-        truth = stable_ref_at(t_end - DEFAULT_FRAME_SIZE / sr / 2)
+        truth = stable_ref_at(t_end - center_offset_s)
         if truth is None or freq is None:
             continue
         errors.append(cents_error(freq, truth))
