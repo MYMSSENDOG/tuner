@@ -12,6 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+crosscheck = ["librosa>=0.11"]  # independent estimator for ground-truth validation
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -25,4 +26,5 @@ testpaths = ["tests"]
 addopts = "-q"
 markers = [
     "e2e: needs real hardware (audio device) or a real display; skips itself when unavailable",
+    "crosscheck: slow full-bank validation against an independent estimator (opt in)",
 ]
