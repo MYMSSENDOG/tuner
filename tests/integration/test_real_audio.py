@@ -14,7 +14,6 @@ annotation window containing its frame center. Windows near a pitch change
 import json
 from pathlib import Path
 
-import numpy as np
 import pytest
 import soundfile as sf
 
@@ -24,8 +23,6 @@ from tuner.core.pitch import DEFAULT_FRAME_SIZE
 from tuner.tools.annotate import main as annotate_cli
 
 from tests.helpers import (
-    LOW_REGISTER_HZ,
-    LOW_REGISTER_TOLERANCE_CENTS,
     STABILITY_CENTS,
     TOLERANCE_CENTS,
     assert_pipeline_agreement,
@@ -36,6 +33,8 @@ from tests.helpers import (
 from tests.synth import SR, add_noise, sequence, tone
 
 FIXTURE_DIR = Path(__file__).parent.parent / "fixtures" / "audio"
+
+
 def test_cli_end_to_end(tmp_path):
     """Full user workflow on a known signal: wav -> CLI annotation -> comparison."""
     freqs = [note_to_freq(n, o) for n, o in [("G", 3), ("B", 3), ("D", 4), ("G", 4), ("D", 5)]]
@@ -69,14 +68,14 @@ def test_cli_end_to_end(tmp_path):
 def test_annotator_vs_app_on_vibrato():
     """Harder in-process case: vibrato violin, both pipelines must agree.
 
-    Tolerance 15 (not the usual 12): the display intentionally smooths
+    Tolerance 14 (not the usual 12): the display intentionally smooths
     (15% amplitude, ~10ms lag — docs/smoothing-tuning.md), which on a deep
     vibrato adds a few cents of instantaneous disagreement by design.
     """
     signal = tone(note_to_freq("A", 4), 2.0, instrument="violin", vibrato_cents=15.0)
     ref = annotate(signal, SR)
     errors = compare_app_to_reference(signal, SR, 0.05, ref)
-    assert_pipeline_agreement(errors, "vibrato", clean_tolerance=15.0)
+    assert_pipeline_agreement(errors, "vibrato", clean_tolerance=14.0)
 
 
 @pytest.mark.xfail(
@@ -119,11 +118,4 @@ def test_user_fixture(audio_path: Path):
         window_s, ref = 0.05, annotate(mono, sr)
 
     errors = compare_app_to_reference(mono, sr, window_s, ref)
-    labeled = [w.freq_hz for w in ref if w.freq_hz is not None]
-    low_register = bool(labeled) and float(np.median(labeled)) < LOW_REGISTER_HZ
-    assert_pipeline_agreement(
-        errors,
-        audio_path.name,
-        noisy=".snr" in audio_path.name,
-        clean_tolerance=LOW_REGISTER_TOLERANCE_CENTS if low_register else TOLERANCE_CENTS,
-    )
+    assert_pipeline_agreement(errors, audio_path.name, noisy=".snr" in audio_path.name)

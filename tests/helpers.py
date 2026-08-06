@@ -68,11 +68,11 @@ def track_signal(
 # Two independent algorithms on real audio. 12 (not 10) because they measure
 # vibrato through different window lengths (46ms real-time vs 186ms centered
 # annotation), which alone produces ~10c phase differences at 5-6Hz vibrato.
+# Driver on the current fixture set: flute_scale_B3B4 at 11.0.
 TOLERANCE_CENTS = 12.0
-# Below ~100Hz a 46ms frame holds only a few periods and bowed bass pitch
-# genuinely wobbles with bow pressure; the register is physically harder.
-LOW_REGISTER_HZ = 100.0
-LOW_REGISTER_TOLERANCE_CENTS = 20.0
+# The low-register carve-out this used to need (bass/cello below 100Hz once
+# reached p95 15.9) is gone: those fixtures now sit at 3-5c, inside the
+# normal tolerance. Reinstate only with fresh measurements, not by feel.
 STABILITY_CENTS = 20.0  # neighboring windows this close = stable region
 
 
@@ -133,12 +133,12 @@ def assert_pipeline_agreement(
     print(f"\n{label}: {len(errors)} readings, median {median:.2f}c, "
           f"p90 {p90:.2f}c, p95 {p95:.2f}c, {octave_misses} octave misses")
     if noisy:
-        # p90 50 accommodates the hardest case on file: a 65Hz fundamental
-        # under pink-heavy noise, where local SNR at the fundamental is near
-        # 0dB and single-frame detection legitimately wobbles (the tracked
-        # median stays ~1 cent)
-        assert median <= 5.0
-        assert p90 <= 50.0
+        # Bounds sit just above the worst measured fixture, so a regression
+        # shows up rather than hiding in slack. Drivers: p90 40.0
+        # (cello C2 + noise — a 65Hz fundamental at ~0dB local SNR), median
+        # 2.4 (bass G2 + noise), octave rate 2.4% (trumpet under flute).
+        assert median <= 3.0
+        assert p90 <= 45.0
         assert octave_misses <= 0.03 * len(errors)
     else:
         assert octave_misses == 0

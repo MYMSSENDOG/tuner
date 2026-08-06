@@ -65,13 +65,16 @@ tests/
 ├── helpers.py       측정 헬퍼 (cent 오차, track_signal 등)
 ├── fakes.py         FakeAudioInput (호출 기록 + 블록 주입)
 ├── unit/            순수 로직: notes, tracker, 합성기 자체검증
+├── sequence_bank.py 단음 뱅크에서 스케일·아르페지오·엑섭을 즉석 합성
+├── unit/            순수 로직: notes, 음이름 래치, tracker, 합성기 자체검증
 ├── dsp/             DSP 품질: 정확도(±2¢), 노이즈 내성, 반응성(≤100ms),
-│                    detector 계약, 주석기 정밀도(sub-cent)
+│                    detector 계약, 주석기 정밀도, 외부 교차검증
 ├── integration/     조립: engine 파이프라인, UI offscreen(장치 전환 포함),
-│                    실오디오 vs 주석 비교
+│                    실오디오 vs 주석 비교, 표시 안정성(음이름 깜빡임)
 ├── e2e/             실기기 전용(없으면 자체 skip): 실제 장치 열거/캡처/핫스왑,
-│                    always-on-top 실제 스태킹(서브프로세스 프로브)
-└── fixtures/audio/  Iowa MIS 실악기 샘플 + .ref.json + 노이즈 변형
+│                    always-on-top 실제 스태킹, 음향 루프백(스피커→마이크)
+├── fixtures/audio/  Iowa MIS 실악기 샘플 + .ref.json + 노이즈/간섭 변형
+└── fixtures/notes/  악기별 크로마틱 단음 뱅크 + bank.json(창 단위 피치)
 ```
 
 Win/Mac 테스트는 분리하지 않는다 — 코드가 플랫폼 공용이므로 같은 스위트를

@@ -7,12 +7,9 @@ multiply. This is the primary data set for tuning tracker/smoothing
 parameters: lots of realistic note transitions per instrument.
 """
 
-import numpy as np
 import pytest
 
 from tests.helpers import (
-    LOW_REGISTER_HZ,
-    LOW_REGISTER_TOLERANCE_CENTS,
     TOLERANCE_CENTS,
     assert_pipeline_agreement,
     compare_app_to_reference,
@@ -60,13 +57,7 @@ CASES = [
 def run_sequence_case(instrument: str, melody, label: str) -> None:
     signal, sr, ref = build_sequence(instrument, melody)
     errors = compare_app_to_reference(signal, sr, 0.05, ref)
-    labeled = [w.freq_hz for w in ref if w.freq_hz is not None]
-    low_register = float(np.median(labeled)) < LOW_REGISTER_HZ
-    assert_pipeline_agreement(
-        errors,
-        label,
-        clean_tolerance=LOW_REGISTER_TOLERANCE_CENTS if low_register else TOLERANCE_CENTS,
-    )
+    assert_pipeline_agreement(errors, label, clean_tolerance=TOLERANCE_CENTS)
 
 
 @pytest.mark.parametrize("instrument,pattern", CASES)
