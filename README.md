@@ -45,6 +45,7 @@ python tests/render_sequence.py oboe tchaik4 t.wav # 뱅크에서 시퀀스 wav 
 | 피처 개발 시작/마무리, 버그 수정, 판정 기준·파라미터 조정 | [회귀 봉인](docs/process/regression.md) |
 | 체감 품질(부드러움·반응·깜빡임 등) 조정 | [주관적 품질 작업](docs/process/subjective-ux.md) |
 | 모듈·구현체 추가, 구조 변경, 추상화 도입 판단 | [프로젝트 구조 + 구조 규칙](docs/ARCHITECTURE.md) |
+| 설계·알고리즘 접근 선택 (과거 기각된 시도 확인) | [기각·결정 인덱스](docs/decisions/INDEX.md) — 관련 항목만 열기 |
 | 검출 로직 이해·수정 (게이트/YIN/옥타브/스무딩/래치) | [음정 측정 파이프라인](docs/pitch-pipeline.md) |
 | 테스트 정답의 출처·신뢰 근거 확인 | [pitch-pipeline "정답의 신뢰 구조"](docs/pitch-pipeline.md) |
 | 스무딩 값의 결정 근거 확인·재튜닝 | [스무딩 튜닝 기록](docs/smoothing-tuning.md) |
