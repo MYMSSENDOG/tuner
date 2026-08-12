@@ -16,7 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from tuner.app.engine import TunerEngine, TunerReading
+from tuner.app.engine import DIGITAL_SILENCE_DBFS, TunerEngine, TunerReading
+from tuner.app.level_widget import InputLevelBar
 from tuner.app.meter_widget import MeterWidget
 from tuner.app.trace_widget import PitchTraceWidget
 from tuner.audio.input import AudioInput
@@ -109,9 +110,22 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addLayout(controls)
+        self._no_signal = QLabel(
+            "입력이 완전한 무음입니다 — 마이크 권한(시스템 설정 > 개인정보 보호 > 마이크)"
+            "과 입력 장치를 확인하세요."
+        )
+        self._no_signal.setStyleSheet(
+            "background-color: #7a3b3b; color: #ffd9d9; padding: 6px;"
+        )
+        self._no_signal.setWordWrap(True)
+        self._no_signal.hide()
+        layout.addWidget(self._no_signal)
         layout.addWidget(self._meter, stretch=1)
+        self._level_bar = InputLevelBar()
+        layout.addWidget(self._level_bar)
         self._trace = PitchTraceWidget()
         layout.addWidget(self._trace)
+        self._silent_readings = 0
         central.setStyleSheet("background-color: #3b4252; color: #c7d2e3;")
         self.setCentralWidget(central)
         self.resize(520, 650)
@@ -159,9 +173,23 @@ class MainWindow(QMainWindow):
         s.setValue("geometry", self.saveGeometry())
         s.sync()
 
+    # readings arrive every 5.8ms; ~2s of EXACT digital silence means the OS
+    # is not delivering audio (permission / dead device), not a quiet room
+    NO_SIGNAL_READINGS = 340
+
     def _on_reading(self, reading: TunerReading) -> None:
         self._meter.set_reading(reading)
         self._trace.add_reading(reading)
+        self._level_bar.set_level(reading.level_dbfs)
+
+        if reading.level_dbfs <= DIGITAL_SILENCE_DBFS:
+            self._silent_readings += 1
+            if self._silent_readings == self.NO_SIGNAL_READINGS:
+                self._no_signal.show()
+        else:
+            self._silent_readings = 0
+            if not self._no_signal.isHidden():
+                self._no_signal.hide()
 
     def _on_detector_changed(self) -> None:
         # the audio thread must not be mid-callback while the buffer is swapped

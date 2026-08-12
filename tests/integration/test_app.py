@@ -118,6 +118,46 @@ def test_trace_freezes_on_silence_and_tracks_note_labels(qapp):
     assert len(trace._points) == 4  # resumes when sound returns
 
 
+class TestInputLevelIndication:
+    def test_reading_carries_level(self):
+        import numpy as np
+
+        from tests.integration.test_engine import run_engine
+
+        amp = 10 ** (-20 / 20) * np.sqrt(2)  # sine with -20dBFS rms
+        readings = run_engine(tone(440.0, 0.2) * amp)
+        levels = [r.level_dbfs for r in readings]
+        assert abs(np.median(levels) - (-20.0)) < 1.5
+
+    def test_digital_silence_shows_banner_and_recovers(self, qapp, make_window):
+        import numpy as np
+
+        fake = FakeAudioInput(np.zeros(0))
+        window = make_window(fake)
+        window.start()
+        assert window._no_signal.isHidden()
+
+        fake._signal = np.zeros(120_000)  # ~2.7s of exact zeros
+        fake.pump()
+        qapp.processEvents()
+        assert not window._no_signal.isHidden()
+
+        fake._signal = tone(440.0, 0.3)
+        fake.pump()
+        qapp.processEvents()
+        assert window._no_signal.isHidden()
+        window.close()
+
+    def test_level_bar_fill_mapping(self):
+        from tuner.app.level_widget import GATE_DBFS, fill_fraction
+
+        assert fill_fraction(-60.0) == 0.0
+        assert fill_fraction(0.0) == 1.0
+        assert fill_fraction(-200.0) == 0.0  # clamped
+        assert abs(GATE_DBFS - (-40.0)) < 0.01  # derived from the gate constant
+        assert 0.0 < fill_fraction(GATE_DBFS) < 1.0
+
+
 class TestSettingsPersistence:
     DEVICES = (
         InputDevice(id=3, name="Mic A", is_default=False),

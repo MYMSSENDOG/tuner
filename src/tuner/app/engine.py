@@ -7,6 +7,7 @@ thread.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -17,11 +18,16 @@ from tuner.core.detector import PitchDetector, YinDetector
 from tuner.core.notes import Note, NoteLatch
 from tuner.core.tracker import PitchTracker, State
 
+DIGITAL_SILENCE_DBFS = -120.0  # exact zeros: no OS permission / dead device
+
 
 @dataclass(frozen=True)
 class TunerReading:
     state: State
     note: Note | None  # present iff state is OK
+    # input level of the newest block; real microphones always carry a noise
+    # floor, so a sustained DIGITAL_SILENCE_DBFS means "no signal at all"
+    level_dbfs: float = DIGITAL_SILENCE_DBFS
 
 
 class TunerEngine:
@@ -64,6 +70,7 @@ class TunerEngine:
 
     def _reset_pipeline(self) -> None:
         self._latch = NoteLatch()
+        self._level_dbfs = DIGITAL_SILENCE_DBFS
         # dt drives the smoother; sample rate is only known after start(),
         # but a wrong-by-10% dt (e.g. 48kHz devices) is immaterial to it
         self._tracker = self._tracker_factory(self._detector.hop_size / (self._sr or 44100))
@@ -72,6 +79,8 @@ class TunerEngine:
         self._pending = 0
 
     def _on_block(self, block: np.ndarray) -> None:
+        rms = float(np.sqrt(np.mean(block * block)))
+        self._level_dbfs = 20.0 * math.log10(rms) if rms > 0.0 else DIGITAL_SILENCE_DBFS
         n = len(block)
         frame_size = self._detector.frame_size
         self._buffer = np.roll(self._buffer, -n)
@@ -87,4 +96,6 @@ class TunerEngine:
         else:
             note = None
             self._latch.reset()
-        self._on_reading(TunerReading(state=tracked.state, note=note))
+        self._on_reading(
+            TunerReading(state=tracked.state, note=note, level_dbfs=self._level_dbfs)
+        )
