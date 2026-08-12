@@ -21,6 +21,7 @@ from tests.sequence_bank import (
     build_sequence,
     chromatic_scale,
     major_scale,
+    octave_leaps,
     ode_to_joy,
     tchaikovsky4_oboe,
     twinkle,
@@ -45,6 +46,7 @@ PATTERNS = {
     "chromatic": lambda root, rng: chromatic_scale(*rng),
     "twinkle": lambda root, rng: twinkle(root),
     "ode_to_joy": lambda root, rng: ode_to_joy(root),
+    "octave_leaps": lambda root, rng: octave_leaps(root),
 }
 
 CASES = [

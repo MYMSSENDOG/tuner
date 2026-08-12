@@ -115,6 +115,13 @@ def arpeggio(root: str, up_and_down: bool = True, dur: float = 0.7) -> Melody:
     return [(transpose(root, s), dur) for s in steps]
 
 
+def octave_leaps(root: str, dur: float = 0.7) -> Melody:
+    """Repeated large jumps — the tracker's jump-confirmation path, which
+    the scales and melodies (max leap a fifth) never stress on real timbre."""
+    steps = [0, 12, 0, 12, 5, 12, 0, 7, 0]
+    return [(transpose(root, s), dur) for s in steps]
+
+
 def from_degrees(root: str, degrees: list[int], durs: list[float]) -> Melody:
     return [(transpose(root, MAJOR[d % 7] + 12 * (d // 7)), t) for d, t in zip(degrees, durs)]
 
