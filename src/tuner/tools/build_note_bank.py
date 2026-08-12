@@ -13,6 +13,7 @@ ever re-annotating.
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -43,7 +44,11 @@ def prepare_clip(mono: np.ndarray, sr: int) -> np.ndarray:
 
 
 def main(argv: list[str] | None = None) -> int:
-    raw_dir, bank_dir = (Path(p) for p in (argv or sys.argv[1:]))
+    parser = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
+    parser.add_argument("raw_dir", help="<instrument>/<Note>.aif tree from Iowa MIS")
+    parser.add_argument("bank_dir", help="output directory (tests/fixtures/notes)")
+    args = parser.parse_args(argv)
+    raw_dir, bank_dir = Path(args.raw_dir), Path(args.bank_dir)
     manifest: dict[str, dict] = {}
     for raw in sorted(raw_dir.glob("*/*.aif")):
         instrument, note = raw.parent.name, raw.stem
