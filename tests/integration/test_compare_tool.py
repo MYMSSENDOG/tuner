@@ -36,8 +36,15 @@ def test_panes_run_their_own_variant(qapp):
     smoothers = [engine._tracker._smoother for engine in view.engines]
     assert smoothers[0] is None  # raw variant
     assert all(s is not None for s in smoothers[1:])
-    cutoffs = {s._min_cutoff for s in smoothers[1:]}
-    assert len(cutoffs) == len(smoothers) - 1  # all different
+    params = {(s._min_cutoff, s._beta) for s in smoothers[1:]}
+    assert len(params) == len(smoothers) - 1  # all combinations distinct
+
+
+def test_default_grid_is_eight_panes():
+    from tuner.tools.compare import MAX_PANES
+
+    assert len(DEFAULT_VARIANTS) == MAX_PANES == 8
+    assert all(v.desc for v in DEFAULT_VARIANTS)  # every pane explains itself
 
 
 def test_engine_accepts_tracker_factory():
@@ -59,3 +66,5 @@ def test_parse_variant():
     v = parse_variant("강함:0.5:0.02")
     assert v == Variant("강함", 0.5, 0.02)
     assert parse_variant("raw:off").min_cutoff_hz is None
+    with_desc = parse_variant("실험:0.7:0.03:내 설명")
+    assert with_desc.desc == "내 설명" and with_desc.beta == 0.03

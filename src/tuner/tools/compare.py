@@ -31,6 +31,7 @@ class Variant:
     label: str
     min_cutoff_hz: float | None  # None = smoothing off
     beta: float = 0.0
+    desc: str = ""  # 이 설정이 체감상 어떻게 다른지 한 줄
 
     @property
     def title(self) -> str:
@@ -44,12 +45,19 @@ class Variant:
         )
 
 
+# cutoff: 정지 상태의 스무딩 강도(낮을수록 바늘이 고요하지만 둔해짐)
+# β: 변화 속도에 비례해 필터를 여는 정도(높을수록 비브라토·글리산도 통과)
 DEFAULT_VARIANTS = [
-    Variant("raw", None),
-    Variant("약함", 2.0, 0.06),
-    Variant("현재 기본값", 1.0, 0.04),
-    Variant("강함", 0.5, 0.015),
+    Variant("raw", None, desc="검출값 그대로 — 지터 원본, 반응 최속"),
+    Variant("초약", 4.0, 0.06, desc="거의 안 누름 — raw 와 구분되는지 볼 것"),
+    Variant("약함", 2.0, 0.06, desc="가벼운 안정화, 비브라토 거의 무손실"),
+    Variant("현재 기본값", 1.0, 0.04, desc="채택값: 지터 절반, 비브라토 85% 보존"),
+    Variant("강함", 0.5, 0.015, desc="바늘 매우 고요, 비브라토 눈에 띄게 감쇠"),
+    Variant("초강", 0.25, 0.01, desc="과도 스무딩 — 비브라토가 뭉개지는 예시"),
+    Variant("저β", 1.0, 0.0, desc="속도 적응 없음 — 글리산도가 굼뜨는 예시"),
+    Variant("고β", 1.0, 0.12, desc="적응 과다 — 지터 억제가 약해지는 예시"),
 ]
+MAX_PANES = 8  # 4 columns x 2 rows
 
 
 class SharedPlayback:
@@ -156,10 +164,15 @@ def build_compare_window(taps, variants: list[Variant]) -> CompareView:
         pane = QVBoxLayout()
         title = QLabel(variant.title)
         title.setStyleSheet("font-weight: bold; padding: 2px;")
+        desc = QLabel(variant.desc)
+        desc.setStyleSheet("color: #8fa8c7; padding: 0 2px 2px;")
+        desc.setWordWrap(True)
         meter = MeterWidget()
-        meter.setMinimumSize(300, 300)
+        meter.setMinimumSize(210, 210)  # 4x2 grid must fit a laptop screen
         trace = PitchTraceWidget()
+        trace.setFixedHeight(56)
         pane.addWidget(title)
+        pane.addWidget(desc)
         pane.addWidget(meter, stretch=1)
         pane.addWidget(trace)
 
@@ -174,7 +187,7 @@ def build_compare_window(taps, variants: list[Variant]) -> CompareView:
             trace.add_reading(reading)
 
         bridge.reading.connect(on_reading)
-        grid.addLayout(pane, i // 2, i % 2)
+        grid.addLayout(pane, i // 4, i % 4)
         view.engines.append(engine)
         view.meters.append(meter)
         view._bridges.append(bridge)
@@ -183,10 +196,12 @@ def build_compare_window(taps, variants: list[Variant]) -> CompareView:
 
 
 def parse_variant(spec: str) -> Variant:
-    label, mc, beta = [*spec.split(":"), "0"][:3]
+    parts = spec.split(":")
+    label, mc, beta = [*parts, "0", "0"][:3]
+    desc = parts[3] if len(parts) > 3 else ""
     if mc.lower() in ("off", "none", "raw"):
-        return Variant(label, None)
-    return Variant(label, float(mc), float(beta))
+        return Variant(label, None, desc=desc)
+    return Variant(label, float(mc), float(beta), desc=desc)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -194,13 +209,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("audio")
     parser.add_argument("--loop", action="store_true")
     parser.add_argument(
-        "--variant", action="append", metavar="LABEL:CUTOFF:BETA",
-        help="쉼표로 최대 4개 반복 지정 (CUTOFF 에 off 를 주면 스무딩 없음). "
-        "지정이 없으면 기본 4종 (raw/약함/현재/강함)",
+        "--variant", action="append", metavar="LABEL:CUTOFF:BETA[:설명]",
+        help="반복 지정, 최대 8개 (CUTOFF 에 off 를 주면 스무딩 없음). "
+        "지정이 없으면 기본 8종 (4x2 그리드)",
     )
     args = parser.parse_args(argv)
     variants = [parse_variant(s) for s in args.variant] if args.variant else DEFAULT_VARIANTS
-    variants = variants[:4]
+    variants = variants[:MAX_PANES]
 
     from PySide6.QtWidgets import QApplication
 
@@ -211,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     taps = [PlaybackTap(shared) for _ in variants]
     view = build_compare_window(taps, variants)
     _sigint_timer = enable_ctrl_c(view.window)
-    view.window.resize(880, 900)
+    view.window.resize(1500, 860)
     view.window.show()
     for engine in view.engines:
         engine.start()
