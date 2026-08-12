@@ -114,6 +114,23 @@ def compare_app_to_reference(
     return errors
 
 
+def _miss_histogram(errors: list[float]) -> str:
+    """Name the mechanism: +1200c = read an octave above the reference
+    (half-period artifact), -1902c = locked onto the 3rd harmonic's period,
+    and so on. Saves re-deriving this from raw dumps every investigation."""
+    buckets: dict[str, int] = {}
+    for e in errors:
+        if abs(e) <= 300:
+            continue
+        ratio = 2.0 ** (e / 1200.0)
+        nearest = min((2, 3, 4, 1 / 2, 1 / 3, 1 / 4), key=lambda r: abs(ratio - r))
+        name = f"x{nearest:g}" if nearest >= 1 else f"/{round(1 / nearest):g}"
+        if abs(1200 * np.log2(ratio / nearest)) > 100:
+            name = "other"
+        buckets[name] = buckets.get(name, 0) + 1
+    return "[" + ", ".join(f"{k}:{v}" for k, v in sorted(buckets.items())) + "]"
+
+
 def assert_pipeline_agreement(
     errors: list[float],
     label: str,
@@ -132,7 +149,8 @@ def assert_pipeline_agreement(
     p90 = float(np.percentile(abs_errors, 90))
     p95 = float(np.percentile(abs_errors, 95))
     print(f"\n{label}: {len(errors)} readings, median {median:.2f}c, "
-          f"p90 {p90:.2f}c, p95 {p95:.2f}c, {octave_misses} octave misses")
+          f"p90 {p90:.2f}c, p95 {p95:.2f}c, {octave_misses} octave misses"
+          + (f" {_miss_histogram(errors)}" if octave_misses else ""))
     if noisy:
         # Bounds sit just above the worst measured fixture, so a regression
         # shows up rather than hiding in slack. Drivers: p90 40.0
