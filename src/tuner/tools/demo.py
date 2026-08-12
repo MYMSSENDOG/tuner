@@ -14,61 +14,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-import numpy as np
-import sounddevice as sd
-import soundfile as sf
-
-from tuner.audio.input import BlockCallback, InputDevice
-
-BLOCK_SIZE = 256
-
-
-class FilePlaybackInput:
-    """AudioInput that plays a file to the default output device and mirrors
-    every block into the analysis callback."""
-
-    def __init__(self, path: str, loop: bool = False):
-        signal, sr = sf.read(path, always_2d=True)
-        self._signal = np.ascontiguousarray(signal.mean(axis=1), dtype=np.float32)
-        self._sr = sr
-        self._loop = loop
-        self._pos = 0
-        self._stream: sd.OutputStream | None = None
-
-    def list_devices(self) -> list[InputDevice]:
-        return []  # source is the file; there is nothing to select
-
-    def start(self, device_id: int | None, callback: BlockCallback) -> int:
-        self.stop()
-
-        def on_block(outdata: np.ndarray, frames: int, time, status) -> None:
-            chunk = self._signal[self._pos : self._pos + frames]
-            self._pos += frames
-            if len(chunk) < frames:
-                if self._loop and len(self._signal) > 0:
-                    self._pos = frames - len(chunk)
-                    chunk = np.concatenate([chunk, self._signal[: self._pos]])
-                else:
-                    chunk = np.concatenate(
-                        [chunk, np.zeros(frames - len(chunk), dtype=np.float32)]
-                    )
-            outdata[:, 0] = chunk
-            callback(chunk.astype(np.float64))
-
-        self._stream = sd.OutputStream(
-            samplerate=self._sr, channels=1, blocksize=BLOCK_SIZE, callback=on_block
-        )
-        self._stream.start()
-        return self._sr
-
-    def stop(self) -> None:
-        if self._stream is not None:
-            self._stream.stop()
-            self._stream.close()
-            self._stream = None
-
-    def refresh_devices(self) -> None:
-        pass  # the source cannot gain devices
+from tuner.tools.playback import FilePlaybackInput
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -16,14 +16,8 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any
 
-import numpy as np
-import sounddevice as sd
-import soundfile as sf
-
-from tuner.audio.input import BlockCallback, InputDevice
 from tuner.core.tracker import PitchTracker
-
-BLOCK_SIZE = 256
+from tuner.tools.playback import PlaybackTap, SharedPlayback
 
 
 @dataclass(frozen=True)
@@ -58,77 +52,6 @@ DEFAULT_VARIANTS = [
     Variant("고β", 1.0, 0.12, desc="적응 과다 — 지터 억제가 약해지는 예시"),
 ]
 MAX_PANES = 8  # 4 columns x 2 rows
-
-
-class SharedPlayback:
-    """One output stream, many analysis taps: every pane hears and analyses
-    the exact same blocks."""
-
-    def __init__(self, path: str, loop: bool = False):
-        signal, sr = sf.read(path, always_2d=True)
-        self._signal = np.ascontiguousarray(signal.mean(axis=1), dtype=np.float32)
-        self.sr = sr
-        self._loop = loop
-        self._pos = 0
-        self._taps: list[BlockCallback] = []
-        self._stream: sd.OutputStream | None = None
-
-    def add_tap(self, callback: BlockCallback) -> None:
-        self._taps.append(callback)
-
-    def start(self) -> None:
-        if self._stream is not None:
-            return
-
-        def on_block(outdata: np.ndarray, frames: int, time, status) -> None:
-            chunk = self._signal[self._pos : self._pos + frames]
-            self._pos += frames
-            if len(chunk) < frames:
-                if self._loop and len(self._signal) > 0:
-                    self._pos = frames - len(chunk)
-                    chunk = np.concatenate([chunk, self._signal[: self._pos]])
-                else:
-                    chunk = np.concatenate(
-                        [chunk, np.zeros(frames - len(chunk), dtype=np.float32)]
-                    )
-            outdata[:, 0] = chunk
-            block = chunk.astype(np.float64)
-            for tap in self._taps:
-                tap(block)
-
-        self._stream = sd.OutputStream(
-            samplerate=self.sr, channels=1, blocksize=BLOCK_SIZE, callback=on_block
-        )
-        self._stream.start()
-
-    def stop(self) -> None:
-        if self._stream is not None:
-            self._stream.stop()
-            self._stream.close()
-            self._stream = None
-
-
-class PlaybackTap:
-    """AudioInput view of SharedPlayback for one engine."""
-
-    def __init__(self, shared: SharedPlayback):
-        self._shared = shared
-
-    def list_devices(self) -> list[InputDevice]:
-        return []
-
-    def start(self, device_id: int | None, callback: BlockCallback) -> int:
-        # registration only — main() opens the stream once after every pane
-        # is wired, so no tap misses the beginning and the tap list never
-        # mutates while the audio callback iterates it
-        self._shared.add_tap(callback)
-        return self._shared.sr
-
-    def stop(self) -> None:
-        self._shared.stop()
-
-    def refresh_devices(self) -> None:
-        pass  # the source cannot gain devices
 
 
 @dataclass
