@@ -119,6 +119,9 @@ class PlaybackTap:
     def stop(self) -> None:
         self._shared.stop()
 
+    def refresh_devices(self) -> None:
+        pass  # the source cannot gain devices
+
 
 @dataclass
 class CompareView:

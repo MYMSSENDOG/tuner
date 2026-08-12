@@ -25,6 +25,9 @@ class NullAudioInput:
     def stop(self):
         pass
 
+    def refresh_devices(self):
+        pass
+
 
 def top_window_at(point):
     return QApplication.topLevelAt(point)

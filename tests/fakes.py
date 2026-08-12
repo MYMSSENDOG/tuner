@@ -39,6 +39,9 @@ class FakeAudioInput:
         self.stop_count += 1
         self._callback = None
 
+    def refresh_devices(self) -> None:
+        pass  # the source cannot gain devices
+
     def pump(self) -> None:
         for start in range(0, len(self._signal), self._block_size):
             self._callback(self._signal[start : start + self._block_size])

@@ -46,3 +46,12 @@ class SoundDeviceInput:
             self._stream.stop()
             self._stream.close()
             self._stream = None
+
+    def refresh_devices(self) -> None:
+        """PortAudio takes its device snapshot at initialization and never
+        rescans, so hot-plugged devices are invisible until the library is
+        re-initialized (the documented sounddevice approach). This tears down
+        any open stream — call stop() first and restart after."""
+        self.stop()
+        sd._terminate()
+        sd._initialize()

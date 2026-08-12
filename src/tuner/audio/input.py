@@ -27,6 +27,12 @@ class InputDevice:
 class AudioInput(Protocol):
     def list_devices(self) -> list[InputDevice]: ...
 
+    def refresh_devices(self) -> None:
+        """Re-scan the hardware so list_devices sees hot-plugged devices.
+        May invalidate an open stream — callers stop first. No-op where the
+        list cannot change (files, fakes)."""
+        ...
+
     def start(self, device_id: int | None, callback: BlockCallback) -> int:
         """Open a stream on the device (None = system default) and begin
         delivering blocks to callback (called on the audio thread).

@@ -200,6 +200,32 @@ class TestDeviceSelection:
         assert fake.started_with == [7, 3]
         window.close()
 
+    def test_hotplug_refresh_adds_new_device(self, make_window):
+        """Opening the dropdown rescans hardware: a device plugged in after
+        launch appears, and the current selection survives the rebuild."""
+        fake = FakeAudioInput(devices=self.DEVICES)
+        window = make_window(fake)
+        window.start()
+        assert window._device_combo.count() == 2
+
+        fake._devices.append(InputDevice(id=9, name="USB Mic", is_default=False))
+        window._refresh_device_list()
+        assert window._device_combo.count() == 3
+        assert window._device_combo.currentText() == "Mic B"  # selection kept
+        assert fake.started_with[-1] == 7  # stream restarted on the same device
+        window.close()
+
+    def test_hotplug_refresh_handles_removed_active_device(self, make_window):
+        fake = FakeAudioInput(devices=self.DEVICES)
+        window = make_window(fake)
+        window.start()
+
+        fake._devices = [d for d in fake._devices if d.name != "Mic B"]
+        window._refresh_device_list()
+        assert window._device_combo.currentText() == "Mic A"  # fell back
+        assert fake.started_with[-1] == 3  # restarted on the surviving device
+        window.close()
+
     def test_switch_resets_pipeline_state(self, qapp, make_window):
         """Buffered audio from the old device must not leak into the new stream."""
         fake = FakeAudioInput(tone(440.0, 0.2), devices=self.DEVICES)

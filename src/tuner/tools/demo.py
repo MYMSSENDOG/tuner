@@ -67,6 +67,9 @@ class FilePlaybackInput:
             self._stream.close()
             self._stream = None
 
+    def refresh_devices(self) -> None:
+        pass  # the source cannot gain devices
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])

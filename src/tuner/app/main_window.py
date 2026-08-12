@@ -43,6 +43,22 @@ class _ReadingBridge(QObject):
     reading = Signal(object)
 
 
+class _DeviceComboBox(QComboBox):
+    """Re-enumerates audio devices the moment the dropdown opens.
+
+    PortAudio snapshots the device list at initialization and never rescans,
+    so a hot-plugged USB microphone stays invisible until a re-init — which
+    tears down the open stream. Doing it on popup ties the ~100ms audio gap
+    to the one moment the user is explicitly about to change devices.
+    """
+
+    about_to_show = Signal()
+
+    def showPopup(self) -> None:
+        self.about_to_show.emit()
+        super().showPopup()
+
+
 class MainWindow(QMainWindow):
     def __init__(self, audio_input: AudioInput, settings: QSettings | None = None):
         super().__init__()
@@ -70,15 +86,12 @@ class MainWindow(QMainWindow):
 
         controls.addSpacing(12)
         controls.addWidget(QLabel("Input"))
-        self._device_combo = QComboBox()
+        self._audio_input = audio_input
+        self._device_combo = _DeviceComboBox()
         self._device_combo.setMinimumWidth(180)
-        default_index = 0
-        for i, device in enumerate(audio_input.list_devices()):
-            self._device_combo.addItem(device.name, device.id)
-            if device.is_default:
-                default_index = i
-        self._device_combo.setCurrentIndex(default_index)
+        self._populate_devices(audio_input.list_devices())
         self._device_combo.currentIndexChanged.connect(self._on_device_changed)
+        self._device_combo.about_to_show.connect(self._refresh_device_list)
         controls.addWidget(self._device_combo, stretch=1)
 
         self._detector_combo = QComboBox()
@@ -154,6 +167,31 @@ class MainWindow(QMainWindow):
         # the audio thread must not be mid-callback while the buffer is swapped
         self._engine.stop()
         self._engine.set_detector(self._detector_combo.currentData()())
+        self._engine.start(self._device_combo.currentData())
+
+    def _populate_devices(self, devices) -> None:
+        default_index = 0
+        for i, device in enumerate(devices):
+            self._device_combo.addItem(device.name, device.id)
+            if device.is_default:
+                default_index = i
+        self._device_combo.setCurrentIndex(default_index)
+
+    def _refresh_device_list(self) -> None:
+        """Hot-plug support: rescan hardware when the dropdown opens."""
+        previous = self._device_combo.currentText()
+        self._engine.stop()  # the rescan invalidates any open stream
+        self._audio_input.refresh_devices()
+        devices = self._audio_input.list_devices()
+
+        with QSignalBlocker(self._device_combo):
+            self._device_combo.clear()
+            self._populate_devices(devices)
+            restored = self._device_combo.findText(previous)
+            if restored >= 0:
+                self._device_combo.setCurrentIndex(restored)
+        # the previous device may be gone (now the default is selected) and
+        # device ids may have shifted either way — restart on current data
         self._engine.start(self._device_combo.currentData())
 
     def _on_device_changed(self) -> None:
