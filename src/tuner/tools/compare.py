@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import argparse
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 import sounddevice as sd
@@ -119,7 +120,17 @@ class PlaybackTap:
         self._shared.stop()
 
 
-def build_compare_window(taps, variants: list[Variant]):
+@dataclass
+class CompareView:
+    """The assembled comparison UI plus handles the caller/tests drive it by."""
+
+    window: Any  # QWidget
+    engines: list[Any] = field(default_factory=list)
+    meters: list[Any] = field(default_factory=list)
+    _bridges: list[Any] = field(default_factory=list)  # keep signals alive
+
+
+def build_compare_window(taps, variants: list[Variant]) -> CompareView:
     """Assemble the grid window. Separated from main() so tests can drive it
     with fake inputs."""
     from PySide6.QtCore import QObject, Signal
@@ -136,7 +147,7 @@ def build_compare_window(taps, variants: list[Variant]):
     window.setWindowTitle("Tuner — 변형 비교")
     window.setStyleSheet("background-color: #3b4252; color: #c7d2e3;")
     grid = QGridLayout(window)
-    window._engines, window._meters, window._bridges = [], [], []
+    view = CompareView(window=window)
 
     for i, (tap, variant) in enumerate(zip(taps, variants)):
         pane = QVBoxLayout()
@@ -161,15 +172,15 @@ def build_compare_window(taps, variants: list[Variant]):
 
         bridge.reading.connect(on_reading)
         grid.addLayout(pane, i // 2, i % 2)
-        window._engines.append(engine)
-        window._meters.append(meter)
-        window._bridges.append(bridge)
+        view.engines.append(engine)
+        view.meters.append(meter)
+        view._bridges.append(bridge)
 
-    return window
+    return view
 
 
 def parse_variant(spec: str) -> Variant:
-    label, mc, beta = (spec.split(":") + ["0"])[:3]
+    label, mc, beta = [*spec.split(":"), "0"][:3]
     if mc.lower() in ("off", "none", "raw"):
         return Variant(label, None)
     return Variant(label, float(mc), float(beta))
@@ -195,11 +206,11 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(sys.argv if argv is None else [sys.argv[0]])
     shared = SharedPlayback(args.audio, loop=args.loop)
     taps = [PlaybackTap(shared) for _ in variants]
-    window = build_compare_window(taps, variants)
-    _sigint_timer = enable_ctrl_c(window)
-    window.resize(880, 900)
-    window.show()
-    for engine in window._engines:
+    view = build_compare_window(taps, variants)
+    _sigint_timer = enable_ctrl_c(view.window)
+    view.window.resize(880, 900)
+    view.window.show()
+    for engine in view.engines:
         engine.start()
     shared.start()
     return app.exec()
