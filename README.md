@@ -49,4 +49,4 @@ python tests/render_sequence.py oboe tchaik4 t.wav # 뱅크에서 시퀀스 wav 
 | 검출 로직 이해·수정 (게이트/YIN/옥타브/스무딩/래치) | [음정 측정 파이프라인](docs/pitch-pipeline.md) |
 | 테스트 정답의 출처·신뢰 근거 확인 | [pitch-pipeline "정답의 신뢰 구조"](docs/pitch-pipeline.md) |
 | 스무딩 값의 결정 근거 확인·재튜닝 | [스무딩 튜닝 기록](docs/smoothing-tuning.md) |
-| 실악기 픽스처 추가 | [fixtures/audio](tests/fixtures/audio/README.md), [notes 뱅크](tests/fixtures/notes/README.md), [외부 라벨](tests/fixtures/external/README.md) |
+| 실악기 픽스처 추가 | [fixtures/audio](tests/fixtures/audio/README.md), [notes 뱅크](tests/fixtures/notes/README.md), [외부 라벨](tests/fixtures/external/README.md), [셈여림](tests/fixtures/dynamics/README.md) |
