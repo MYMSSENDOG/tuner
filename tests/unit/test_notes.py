@@ -3,7 +3,7 @@ import math
 import pytest
 
 from tuner.app.meter_model import needle_angle_deg, zone_for_cents
-from tuner.core.notes import Note, freq_to_note, note_to_freq
+from tuner.core.notes import freq_to_note, note_to_freq
 
 
 class TestNoteToFreq:

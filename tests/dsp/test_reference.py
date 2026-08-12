@@ -7,11 +7,10 @@ accuracy bar is far stricter than the app's (sub-cent on stable pitch).
 import numpy as np
 import pytest
 
-from tuner.analysis.reference import annotate
-from tuner.core.notes import note_to_freq
-
 from tests.helpers import cents_error
 from tests.synth import SR, add_noise, glissando, glissando_freqs, tone
+from tuner.analysis.reference import annotate
+from tuner.core.notes import note_to_freq
 
 MAX_STABLE_ERROR_CENTS = 0.5
 
@@ -60,7 +59,7 @@ def test_faint_room_tone_terminates_and_unlabeled():
 
     rng = np.random.default_rng(7)
     frame = rng.standard_normal(8192) * 1e-4
-    freq, conf = estimate_f0(frame, SR)
+    _freq, conf = estimate_f0(frame, SR)
     assert conf < 0.9
 
 

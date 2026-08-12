@@ -114,7 +114,8 @@ class MainWindow(QMainWindow):
 
     def _restore_settings(self) -> None:
         s = self._settings
-        self._a4_spin.setValue(int(s.value("a4_hz", 442)))
+        stored_a4 = s.value("a4_hz", 442, type=int)
+        self._a4_spin.setValue(stored_a4 if isinstance(stored_a4, int) else 442)
         # explicit sync: setValue emits no signal when the value is unchanged
         # (e.g. stored value == default), and the ctor's setValue predates connect
         self._engine.set_a4(float(self._a4_spin.value()))
@@ -130,7 +131,7 @@ class MainWindow(QMainWindow):
                 self._detector_combo.setCurrentIndex(detector_index)
             self._engine.set_detector(self._detector_combo.currentData()())
 
-        self._pin_check.setChecked(s.value("always_on_top", False, type=bool))
+        self._pin_check.setChecked(bool(s.value("always_on_top", False, type=bool)))
 
         geometry = s.value("geometry")
         if geometry is not None:

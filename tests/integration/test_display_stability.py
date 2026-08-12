@@ -15,9 +15,8 @@ from pathlib import Path
 import pytest
 import soundfile as sf
 
-from tuner.app.engine import TunerEngine, TunerReading
-
 from tests.fakes import FakeAudioInput
+from tuner.app.engine import TunerEngine, TunerReading
 
 FIXTURE_DIR = Path(__file__).parent.parent / "fixtures" / "audio"
 

@@ -2,11 +2,10 @@
 
 import numpy as np
 
-from tuner.app.engine import TunerEngine
-from tuner.core.tracker import State
-
 from tests.fakes import FakeAudioInput
 from tests.synth import SR, tone
+from tuner.app.engine import TunerEngine
+from tuner.core.tracker import State
 
 
 def run_engine(signal: np.ndarray, a4_hz: float = 440.0):

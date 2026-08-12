@@ -7,10 +7,9 @@ SNR 5dB is reported but held to a looser bound.
 import numpy as np
 import pytest
 
-from tuner.core.notes import note_to_freq
-
 from tests.helpers import cents_error, detect_frames, detect_median_hz
 from tests.synth import add_noise, tone
+from tuner.core.notes import note_to_freq
 
 # (snr_db, max_cents_error)
 SNR_CRITERIA = [(20.0, 3.0), (10.0, 5.0), (5.0, 8.0)]

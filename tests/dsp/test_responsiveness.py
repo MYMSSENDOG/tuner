@@ -8,10 +8,9 @@ correctly outside transition transients.
 import numpy as np
 import pytest
 
-from tuner.core.notes import freq_to_note, note_to_freq
-
 from tests.helpers import cents_error, track_signal
 from tests.synth import SR, add_noise, glissando, glissando_freqs, sequence, tone
+from tuner.core.notes import freq_to_note, note_to_freq
 
 MAX_CONVERGE_S = 0.100
 MAX_GLISS_LAG_S = 0.100

@@ -3,10 +3,9 @@
 import numpy as np
 import pytest
 
-from tuner.core.notes import note_to_freq
-
 from tests.helpers import cents_error, detect_median_hz
 from tests.synth import tone
+from tuner.core.notes import note_to_freq
 
 MAX_ERROR_CENTS = 2.0
 

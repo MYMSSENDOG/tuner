@@ -37,7 +37,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     audio_dir, out_dir = Path(args.audio_dir), Path(args.out_dir)
-    rows = list(csv.DictReader(open(args.metadata)))
+    with open(args.metadata) as f:
+        rows = list(csv.DictReader(f))
     by_instrument: dict[str, list[dict]] = {}
     for row in rows:
         if row["Resampled"].strip().lower() == "true":

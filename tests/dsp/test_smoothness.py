@@ -8,11 +8,10 @@ p95 0.94c, vibrato ratio 0.95.
 import numpy as np
 import pytest
 
-from tuner.core.notes import note_to_freq
-
 from tests.helpers import cents_error, track_signal
 from tests.sequence_bank import BANK_DIR, build_sequence, major_scale, twinkle
 from tests.synth import SR, tone
+from tuner.core.notes import note_to_freq
 
 requires_bank = pytest.mark.skipif(
     not (BANK_DIR / "bank.json").exists(),

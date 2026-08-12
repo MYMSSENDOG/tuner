@@ -21,7 +21,7 @@ PROBE = Path(__file__).with_name("_stacking_probe.py")
 def test_always_on_top_wins_stacking():
     env = os.environ.copy()
     env.pop("QT_QPA_PLATFORM", None)  # let Qt pick the real display platform
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: PLW1510 — returncode is asserted below
         [sys.executable, str(PROBE)],
         env=env,
         capture_output=True,

@@ -4,11 +4,10 @@ import time
 
 import pytest
 
-from tuner.core.detector import DETECTORS, SpectralDetector, YinDetector
-from tuner.core.notes import note_to_freq
-
 from tests.helpers import cents_error
 from tests.synth import SR, tone
+from tuner.core.detector import DETECTORS, SpectralDetector, YinDetector
+from tuner.core.notes import note_to_freq
 
 
 @pytest.mark.parametrize("detector_cls", DETECTORS, ids=lambda c: c.__name__)
@@ -57,10 +56,9 @@ def test_input_level_gate(detector_cls):
 
 
 def test_engine_accepts_spectral_detector():
+    from tests.fakes import FakeAudioInput
     from tuner.app.engine import TunerEngine
     from tuner.core.tracker import State
-
-    from tests.fakes import FakeAudioInput
 
     readings = []
     fake = FakeAudioInput(tone(440.0, 0.5, instrument="violin"))
@@ -74,10 +72,9 @@ def test_engine_accepts_spectral_detector():
 
 
 def test_engine_detector_hotswap():
+    from tests.fakes import FakeAudioInput
     from tuner.app.engine import TunerEngine
     from tuner.core.tracker import State
-
-    from tests.fakes import FakeAudioInput
 
     readings = []
     fake = FakeAudioInput(tone(440.0, 0.5, instrument="violin"))

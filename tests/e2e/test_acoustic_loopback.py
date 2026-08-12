@@ -22,10 +22,10 @@ import pytest
 
 sd = pytest.importorskip("sounddevice")
 
-from tuner.audio.sounddevice_input import SoundDeviceInput  # noqa: E402
-from tuner.core.detector import YinDetector  # noqa: E402
-from tuner.core.notes import note_to_freq  # noqa: E402
-from tuner.core.tracker import PitchTracker  # noqa: E402
+from tuner.audio.sounddevice_input import SoundDeviceInput
+from tuner.core.detector import YinDetector
+from tuner.core.notes import note_to_freq
+from tuner.core.tracker import PitchTracker
 
 pytestmark = pytest.mark.e2e
 
@@ -54,7 +54,7 @@ def _speaker_device() -> int | None:
 def _devices_available() -> bool:
     try:
         return bool(SoundDeviceInput().list_devices()) and _speaker_device() is not None
-    except Exception:
+    except Exception:  # noqa: BLE001 — availability probe: any failure means "skip"
         return False
 
 

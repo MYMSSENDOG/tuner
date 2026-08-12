@@ -4,13 +4,12 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtCore import Qt
 
-from tuner.audio.input import InputDevice  # noqa: E402
-from tuner.core.tracker import State  # noqa: E402
-
-from tests.fakes import FakeAudioInput  # noqa: E402
-from tests.synth import tone  # noqa: E402
+from tests.fakes import FakeAudioInput
+from tests.synth import tone
+from tuner.audio.input import InputDevice
+from tuner.core.tracker import State
 
 
 @pytest.fixture

@@ -13,7 +13,6 @@ from tuner.core import pitch
 from tuner.core.pitch import PitchResult
 from tuner.core.spectral import estimate_f0, restore_weak_fundamental
 
-
 # Below this input level a frame is "not being played at" — bow-stroke tails
 # and room rumble still carry trackable pitch, and without a gate the display
 # flips wildly between them (measured on the violin scale recording: 125

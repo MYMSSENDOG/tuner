@@ -11,26 +11,22 @@ annotation window containing its frame center. Windows near a pitch change
 (unstable neighbors) are transition regions and excluded from judgment.
 """
 
-import json
 from pathlib import Path
 
 import pytest
 import soundfile as sf
 
-from tuner.analysis.reference import RefWindow, annotate
-from tuner.core.notes import note_to_freq
-from tuner.core.pitch import DEFAULT_FRAME_SIZE
-from tuner.tools.annotate import main as annotate_cli
-
 from tests.helpers import (
     STABILITY_CENTS,
-    TOLERANCE_CENTS,
     assert_pipeline_agreement,
     cents_error,
     compare_app_to_reference,
     load_ref_json,
 )
 from tests.synth import SR, add_noise, sequence, tone
+from tuner.analysis.reference import annotate
+from tuner.core.notes import note_to_freq
+from tuner.tools.annotate import main as annotate_cli
 
 FIXTURE_DIR = Path(__file__).parent.parent / "fixtures" / "audio"
 

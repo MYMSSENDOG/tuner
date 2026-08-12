@@ -59,9 +59,9 @@ class PitchTraceWidget(QWidget):
             clamped = max(-RANGE_CENTS, min(RANGE_CENTS, cents))
             return h / 2 - clamped / RANGE_CENTS * (h / 2 - 4)
 
-        for cents, color in ((25.0, GUIDE_LINE), (-25.0, GUIDE_LINE), (0.0, CENTER_LINE)):
+        for guide, color in ((25.0, GUIDE_LINE), (-25.0, GUIDE_LINE), (0.0, CENTER_LINE)):
             painter.setPen(QPen(color, 1))
-            painter.drawLine(0, int(y_at(cents)), w, int(y_at(cents)))
+            painter.drawLine(0, int(y_at(guide)), w, int(y_at(guide)))
 
         font = self.font()
         font.setPointSize(9)

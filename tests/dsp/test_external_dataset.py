@@ -23,7 +23,7 @@ import soundfile as sf
 
 from tuner.analysis.reference import annotate
 from tuner.core.detector import YinDetector
-from tuner.core.notes import NOTE_NAMES, A4_MIDI
+from tuner.core.notes import A4_MIDI
 from tuner.core.tracker import PitchTracker
 
 EXTERNAL_DIR = Path(__file__).parent.parent / "fixtures" / "external"

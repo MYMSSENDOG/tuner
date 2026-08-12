@@ -15,5 +15,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -e ".[dev]"
+      - run: ruff check src tests
+      - run: mypy src/tuner
       # e2e needs a real audio device / display session — local-machine only
       - run: pytest -m "not e2e and not crosscheck"

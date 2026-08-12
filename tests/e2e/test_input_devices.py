@@ -9,13 +9,13 @@ import pytest
 
 sd = pytest.importorskip("sounddevice")
 
-from tuner.audio.sounddevice_input import SoundDeviceInput  # noqa: E402
+from tuner.audio.sounddevice_input import SoundDeviceInput
 
 
 def _list_devices():
     try:
         return SoundDeviceInput().list_devices()
-    except Exception:
+    except Exception:  # noqa: BLE001 — availability probe: any failure means "skip"
         return []
 
 

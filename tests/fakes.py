@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from tuner.audio.input import InputDevice
-
 from tests.synth import SR
+from tuner.audio.input import InputDevice
 
 
 class FakeAudioInput:

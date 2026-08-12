@@ -160,7 +160,7 @@ def _refine_at_higher_lag(d: np.ndarray, tau: float, w: int) -> float:
     m = int((w - 2) / tau)
     if m < 2:
         return tau
-    center = int(round(m * tau))
+    center = round(m * tau)
     radius = max(2, int(0.45 * tau))
     lo = max(1, center - radius)
     hi = min(w - 1, center + radius + 1)

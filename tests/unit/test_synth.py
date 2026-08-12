@@ -35,7 +35,7 @@ def test_harmonic_tone_fundamental_present():
     spectrum = np.abs(np.fft.rfft(signal * np.hanning(len(signal))))
     freqs = np.fft.rfftfreq(len(signal), 1 / SR)
     for k in (1, 2, 3):
-        bin_idx = int(round(196.0 * k * len(signal) / SR))
+        bin_idx = round(196.0 * k * len(signal) / SR)
         window = spectrum[bin_idx - 3 : bin_idx + 4]
         assert window.max() > 0.01 * spectrum.max(), f"harmonic {k} missing"
         assert freqs[bin_idx] == pytest.approx(196.0 * k, abs=1.0)

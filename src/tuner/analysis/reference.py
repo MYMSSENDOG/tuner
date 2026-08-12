@@ -49,7 +49,7 @@ def annotate(
     Each estimate uses a long analysis frame centered on the slice midpoint
     (the offline advantage: future samples are available).
     """
-    hop = int(round(window_s * sr))
+    hop = round(window_s * sr)
     frame_size = max(MIN_ANALYSIS_FRAME, 4 * hop)
     n_windows = len(signal) // hop
     window_rms = np.array(

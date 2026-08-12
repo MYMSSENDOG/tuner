@@ -8,11 +8,9 @@ from pathlib import Path
 
 import numpy as np
 
-from tuner.analysis.reference import RefWindow
-
-from tuner.core.pitch import DEFAULT_FRAME_SIZE, DEFAULT_HOP_SIZE, detect
-
 from tests.synth import SR
+from tuner.analysis.reference import RefWindow
+from tuner.core.pitch import DEFAULT_FRAME_SIZE, DEFAULT_HOP_SIZE, detect
 
 
 def cents_error(detected_hz: float, true_hz: float) -> float:

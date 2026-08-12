@@ -151,7 +151,7 @@ def _comb_coverage(spectrum: np.ndarray, f0_hz: float, bin_hz: float) -> float:
     if f0_hz <= 2 * half_width * bin_hz:
         return 0.0
     k = 1
-    while (b := int(round(f0_hz * k / bin_hz))) + half_width < len(spectrum):
+    while (b := round(f0_hz * k / bin_hz)) + half_width < len(spectrum):
         harmonic += float(np.sum(spectrum[b - half_width : b + half_width + 1] ** 2))
         k += 1
     return min(1.0, harmonic / total)

@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "ruff>=0.16", "mypy>=1.14"]
 crosscheck = ["librosa>=0.11"]  # independent estimator for ground-truth validation
 
 [build-system]
@@ -28,3 +28,11 @@ markers = [
     "e2e: needs real hardware (audio device) or a real display; skips itself when unavailable",
     "crosscheck: slow full-bank validation against an independent estimator (opt in)",
 ]
+
+[tool.ruff]
+# defaults + a couple of bug-catching extras; formatting is not enforced
+[tool.ruff.lint]
+extend-select = ["SIM", "BLE", "PLW", "RUF"]
+
+[tool.mypy]
+ignore_missing_imports = true  # PySide6/sounddevice ship incomplete stubs
