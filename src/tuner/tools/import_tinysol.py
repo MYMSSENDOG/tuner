@@ -34,6 +34,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("metadata", help="TinySOL_metadata.csv")
     parser.add_argument("out_dir")
     parser.add_argument("--per-instrument", type=int, default=12, help="clips per instrument")
+    parser.add_argument(
+        "--dynamics-sets", type=int, default=0, metavar="N",
+        help="instead of single clips, import N notes per instrument that exist "
+        "in pp+mf+ff, keeping each trio's RELATIVE level (peaks scaled by the "
+        "trio's loudest) so quiet playing stays genuinely quiet",
+    )
     args = parser.parse_args(argv)
 
     audio_dir, out_dir = Path(args.audio_dir), Path(args.out_dir)
@@ -47,6 +53,9 @@ def main(argv: list[str] | None = None) -> int:
         if source is None:
             continue
         by_instrument.setdefault(row["Instrument (in full)"], []).append({**row, "src": source})
+
+    if args.dynamics_sets:
+        return import_dynamics_sets(by_instrument, out_dir, args.dynamics_sets)
 
     labels: dict[str, dict] = {}
     for instrument, entries in sorted(by_instrument.items()):
@@ -73,6 +82,43 @@ def main(argv: list[str] | None = None) -> int:
             }
         print(f"{instrument}: {min(len(entries), args.per_instrument)} clips")
 
+    (out_dir / "labels.json").write_text(json.dumps(labels, indent=1, sort_keys=True))
+    print(f"{out_dir}/labels.json: {len(labels)} clips")
+    return 0
+
+
+def import_dynamics_sets(by_instrument: dict, out_dir: Path, per_instrument: int) -> int:
+    labels: dict[str, dict] = {}
+    for instrument, entries in sorted(by_instrument.items()):
+        by_pitch: dict[str, dict[str, dict]] = {}
+        for e in entries:
+            by_pitch.setdefault(e["Pitch"], {})[e["Dynamics"]] = e
+        trios = {p: d for p, d in by_pitch.items() if {"pp", "mf", "ff"} <= set(d)}
+        picks = sorted(trios, key=lambda p: int(trios[p]["mf"]["Pitch ID"]))
+        step = max(1, len(picks) // per_instrument)
+        for pitch in picks[::step][:per_instrument]:
+            trio = {dyn: sf.read(trios[pitch][dyn]["src"], always_2d=True)
+                    for dyn in ("pp", "mf", "ff")}
+            loudest = max(float(np.max(np.abs(sig.mean(axis=1)))) for sig, _ in trio.values())
+            if loudest <= 0:
+                continue
+            gain = 0.7 / loudest  # one gain for the whole trio: dynamics survive
+            for dyn, (sig, sr) in trio.items():
+                mono = sig.mean(axis=1)[: int(MAX_SECONDS * sr)] * gain
+                entry = trios[pitch][dyn]
+                name = f"{entry['Instrument (abbr.)']}-{pitch}-{dyn}".replace("#", "s")
+                out = out_dir / f"{name}.flac"
+                out.parent.mkdir(parents=True, exist_ok=True)
+                sf.write(out, mono, sr, subtype="PCM_16")
+                labels[out.name] = {
+                    "instrument": entry["Instrument (in full)"],
+                    "pitch": pitch,
+                    "midi": int(entry["Pitch ID"]),
+                    "dynamics": dyn,
+                    "source": entry["Path"],
+                }
+        n = min(len(picks), per_instrument)
+        print(f"{instrument}: {n} pp/mf/ff sets")
     (out_dir / "labels.json").write_text(json.dumps(labels, indent=1, sort_keys=True))
     print(f"{out_dir}/labels.json: {len(labels)} clips")
     return 0

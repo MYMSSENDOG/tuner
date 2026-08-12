@@ -1,0 +1,317 @@
+{
+ "Fl-B3-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Flute",
+  "midi": 59,
+  "pitch": "B3",
+  "source": "Winds/Flute/ordinario/Fl-ord-B3-ff-N.wav"
+ },
+ "Fl-B3-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Flute",
+  "midi": 59,
+  "pitch": "B3",
+  "source": "Winds/Flute/ordinario/Fl-ord-B3-mf-N.wav"
+ },
+ "Fl-B3-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Flute",
+  "midi": 59,
+  "pitch": "B3",
+  "source": "Winds/Flute/ordinario/Fl-ord-B3-pp-N.wav"
+ },
+ "Fl-Cs5-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Flute",
+  "midi": 73,
+  "pitch": "C#5",
+  "source": "Winds/Flute/ordinario/Fl-ord-C#5-ff-N.wav"
+ },
+ "Fl-Cs5-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Flute",
+  "midi": 73,
+  "pitch": "C#5",
+  "source": "Winds/Flute/ordinario/Fl-ord-C#5-mf-N.wav"
+ },
+ "Fl-Cs5-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Flute",
+  "midi": 73,
+  "pitch": "C#5",
+  "source": "Winds/Flute/ordinario/Fl-ord-C#5-pp-N.wav"
+ },
+ "Fl-Ds6-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Flute",
+  "midi": 87,
+  "pitch": "D#6",
+  "source": "Winds/Flute/ordinario/Fl-ord-D#6-ff-N.wav"
+ },
+ "Fl-Ds6-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Flute",
+  "midi": 87,
+  "pitch": "D#6",
+  "source": "Winds/Flute/ordinario/Fl-ord-D#6-mf-N.wav"
+ },
+ "Fl-Ds6-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Flute",
+  "midi": 87,
+  "pitch": "D#6",
+  "source": "Winds/Flute/ordinario/Fl-ord-D#6-pp-N.wav"
+ },
+ "Fl-Fs4-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Flute",
+  "midi": 66,
+  "pitch": "F#4",
+  "source": "Winds/Flute/ordinario/Fl-ord-F#4-ff-N.wav"
+ },
+ "Fl-Fs4-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Flute",
+  "midi": 66,
+  "pitch": "F#4",
+  "source": "Winds/Flute/ordinario/Fl-ord-F#4-mf-N.wav"
+ },
+ "Fl-Fs4-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Flute",
+  "midi": 66,
+  "pitch": "F#4",
+  "source": "Winds/Flute/ordinario/Fl-ord-F#4-pp-N.wav"
+ },
+ "Fl-Gs5-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Flute",
+  "midi": 80,
+  "pitch": "G#5",
+  "source": "Winds/Flute/ordinario/Fl-ord-G#5-ff-N.wav"
+ },
+ "Fl-Gs5-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Flute",
+  "midi": 80,
+  "pitch": "G#5",
+  "source": "Winds/Flute/ordinario/Fl-ord-G#5-mf-N.wav"
+ },
+ "Fl-Gs5-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Flute",
+  "midi": 80,
+  "pitch": "G#5",
+  "source": "Winds/Flute/ordinario/Fl-ord-G#5-pp-N.wav"
+ },
+ "Ob-As3-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Oboe",
+  "midi": 58,
+  "pitch": "A#3",
+  "source": "Winds/Oboe/ordinario/Ob-ord-A#3-ff-N.wav"
+ },
+ "Ob-As3-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Oboe",
+  "midi": 58,
+  "pitch": "A#3",
+  "source": "Winds/Oboe/ordinario/Ob-ord-A#3-mf-N.wav"
+ },
+ "Ob-As3-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Oboe",
+  "midi": 58,
+  "pitch": "A#3",
+  "source": "Winds/Oboe/ordinario/Ob-ord-A#3-pp-N.wav"
+ },
+ "Ob-D5-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Oboe",
+  "midi": 74,
+  "pitch": "D5",
+  "source": "Winds/Oboe/ordinario/Ob-ord-D5-ff-N.wav"
+ },
+ "Ob-D5-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Oboe",
+  "midi": 74,
+  "pitch": "D5",
+  "source": "Winds/Oboe/ordinario/Ob-ord-D5-mf-N.wav"
+ },
+ "Ob-D5-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Oboe",
+  "midi": 74,
+  "pitch": "D5",
+  "source": "Winds/Oboe/ordinario/Ob-ord-D5-pp-N.wav"
+ },
+ "Ob-Ds6-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Oboe",
+  "midi": 87,
+  "pitch": "D#6",
+  "source": "Winds/Oboe/ordinario/Ob-ord-D#6-ff-N.wav"
+ },
+ "Ob-Ds6-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Oboe",
+  "midi": 87,
+  "pitch": "D#6",
+  "source": "Winds/Oboe/ordinario/Ob-ord-D#6-mf-N.wav"
+ },
+ "Ob-Ds6-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Oboe",
+  "midi": 87,
+  "pitch": "D#6",
+  "source": "Winds/Oboe/ordinario/Ob-ord-D#6-pp-N.wav"
+ },
+ "Ob-Fs4-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Oboe",
+  "midi": 66,
+  "pitch": "F#4",
+  "source": "Winds/Oboe/ordinario/Ob-ord-F#4-ff-N.wav"
+ },
+ "Ob-Fs4-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Oboe",
+  "midi": 66,
+  "pitch": "F#4",
+  "source": "Winds/Oboe/ordinario/Ob-ord-F#4-mf-N.wav"
+ },
+ "Ob-Fs4-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Oboe",
+  "midi": 66,
+  "pitch": "F#4",
+  "source": "Winds/Oboe/ordinario/Ob-ord-F#4-pp-N.wav"
+ },
+ "Ob-Gs5-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Oboe",
+  "midi": 80,
+  "pitch": "G#5",
+  "source": "Winds/Oboe/ordinario/Ob-ord-G#5-ff-N.wav"
+ },
+ "Ob-Gs5-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Oboe",
+  "midi": 80,
+  "pitch": "G#5",
+  "source": "Winds/Oboe/ordinario/Ob-ord-G#5-mf-N.wav"
+ },
+ "Ob-Gs5-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Oboe",
+  "midi": 80,
+  "pitch": "G#5",
+  "source": "Winds/Oboe/ordinario/Ob-ord-G#5-pp-N.wav"
+ },
+ "Vn-As5-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Violin",
+  "midi": 82,
+  "pitch": "A#5",
+  "source": "Strings/Violin/ordinario/Vn-ord-A#5-ff-2c.wav"
+ },
+ "Vn-As5-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Violin",
+  "midi": 82,
+  "pitch": "A#5",
+  "source": "Strings/Violin/ordinario/Vn-ord-A#5-mf-3c.wav"
+ },
+ "Vn-As5-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Violin",
+  "midi": 82,
+  "pitch": "A#5",
+  "source": "Strings/Violin/ordinario/Vn-ord-A#5-pp-3c.wav"
+ },
+ "Vn-Cs5-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Violin",
+  "midi": 73,
+  "pitch": "C#5",
+  "source": "Strings/Violin/ordinario/Vn-ord-C#5-ff-4c.wav"
+ },
+ "Vn-Cs5-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Violin",
+  "midi": 73,
+  "pitch": "C#5",
+  "source": "Strings/Violin/ordinario/Vn-ord-C#5-mf-4c.wav"
+ },
+ "Vn-Cs5-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Violin",
+  "midi": 73,
+  "pitch": "C#5",
+  "source": "Strings/Violin/ordinario/Vn-ord-C#5-pp-4c.wav"
+ },
+ "Vn-E4-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Violin",
+  "midi": 64,
+  "pitch": "E4",
+  "source": "Strings/Violin/ordinario/Vn-ord-E4-ff-4c.wav"
+ },
+ "Vn-E4-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Violin",
+  "midi": 64,
+  "pitch": "E4",
+  "source": "Strings/Violin/ordinario/Vn-ord-E4-mf-4c.wav"
+ },
+ "Vn-E4-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Violin",
+  "midi": 64,
+  "pitch": "E4",
+  "source": "Strings/Violin/ordinario/Vn-ord-E4-pp-4c.wav"
+ },
+ "Vn-G3-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Violin",
+  "midi": 55,
+  "pitch": "G3",
+  "source": "Strings/Violin/ordinario/Vn-ord-G3-ff-4c.wav"
+ },
+ "Vn-G3-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Violin",
+  "midi": 55,
+  "pitch": "G3",
+  "source": "Strings/Violin/ordinario/Vn-ord-G3-mf-4c.wav"
+ },
+ "Vn-G3-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Violin",
+  "midi": 55,
+  "pitch": "G3",
+  "source": "Strings/Violin/ordinario/Vn-ord-G3-pp-4c.wav"
+ },
+ "Vn-G6-ff.flac": {
+  "dynamics": "ff",
+  "instrument": "Violin",
+  "midi": 91,
+  "pitch": "G6",
+  "source": "Strings/Violin/ordinario/Vn-ord-G6-ff-2c.wav"
+ },
+ "Vn-G6-mf.flac": {
+  "dynamics": "mf",
+  "instrument": "Violin",
+  "midi": 91,
+  "pitch": "G6",
+  "source": "Strings/Violin/ordinario/Vn-ord-G6-mf-2c.wav"
+ },
+ "Vn-G6-pp.flac": {
+  "dynamics": "pp",
+  "instrument": "Violin",
+  "midi": 91,
+  "pitch": "G6",
+  "source": "Strings/Violin/ordinario/Vn-ord-G6-pp-2c.wav"
+ }
+}
