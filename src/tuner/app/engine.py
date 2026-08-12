@@ -30,12 +30,16 @@ class TunerEngine:
         audio_input: AudioInput,
         on_reading: Callable[[TunerReading], None],
         detector: PitchDetector | None = None,
+        tracker_factory: Callable[[float], PitchTracker] | None = None,
     ):
         self._audio = audio_input
         self._on_reading = on_reading
         self._a4_hz = 440.0
         self._sr = 0
         self._detector: PitchDetector = detector or YinDetector()
+        # (dt_s) -> PitchTracker; injectable so variant-comparison harnesses
+        # can run several display policies over the same audio
+        self._tracker_factory = tracker_factory or (lambda dt: PitchTracker(dt_s=dt))
         self._reset_pipeline()
 
     @property
@@ -62,7 +66,7 @@ class TunerEngine:
         self._latch = NoteLatch()
         # dt drives the smoother; sample rate is only known after start(),
         # but a wrong-by-10% dt (e.g. 48kHz devices) is immaterial to it
-        self._tracker = PitchTracker(dt_s=self._detector.hop_size / (self._sr or 44100))
+        self._tracker = self._tracker_factory(self._detector.hop_size / (self._sr or 44100))
         self._buffer = np.zeros(self._detector.frame_size)
         self._filled = 0
         self._pending = 0

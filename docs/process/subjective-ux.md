@@ -15,6 +15,8 @@
 4. **같은 음원에 대해 변형 여러 개(버전 1·2·3·4)를 나란히 체험**할 수
    있게 만들어 사용자가 고르게 한다. 수치의 무릎 지점은 출발점일 뿐,
    최종 결정은 사용자의 감각이다. 사용자의 선택과 코멘트로 좁혀간다.
+   도구: `python -m tuner.tools.compare 오디오 --loop`
+   (커스텀 변형은 `--variant "라벨:cutoff:beta"`, cutoff 에 off 가능).
 5. 채택값은 근거와 함께 문서화하고, 대리 지표를 **회귀 게이트**로
    남긴다 (실례: `tests/dsp/test_smoothness.py`).
 
@@ -23,6 +25,6 @@
 - 체감 기능에는 **한 줄 on/off 스위치**를 남겨 비교 실험을 싸게 만든다
   (`SMOOTHING_ENABLED`, `NOTE_LATCH_ENABLED`, `INPUT_GATE_RMS` —
   목록은 `docs/pitch-pipeline.md` "표시 안정화 스위치").
-- 파일을 들려주며 관찰: `python -m tuner.tools.demo <audio> [--loop]`.
+- 단일 설정 관찰: `python -m tuner.tools.demo <audio> [--loop]`.
 - UI 설정은 최소화가 제품 방침 — 조절 파라미터는 UI 노출 대신 실측
   고정값을 먼저 시도한다.

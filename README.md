@@ -29,6 +29,7 @@ pytest -m crosscheck                      # 느린 정답 감사 (pip install -e
 
 ```bash
 python -m tuner.tools.demo 오디오.wav --loop       # 파일 들으며 튜너 동작 관찰
+python -m tuner.tools.compare 오디오.wav --loop    # 같은 음원, 파라미터 변형 4개 나란히 비교
 python -m tuner.tools.annotate 녹음.wav -w 0.05    # 주파수 주석(.ref.json) 생성
 python -m tuner.tools.add_noise 녹음.wav --snr 20  # 노이즈/간섭 변형 픽스처 생성
 python tests/render_sequence.py oboe tchaik4 t.wav # 뱅크에서 시퀀스 wav 렌더
