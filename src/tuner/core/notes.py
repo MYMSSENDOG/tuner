@@ -19,12 +19,29 @@ NOTE_LATCH_ENABLED = True
 NOTE_HYSTERESIS_CENTS = 15.0
 NOTE_DWELL_FRAMES = 12  # ~70ms at the default hop; measured against vibrato
 
+# Ceiling on the deviation a *held* note may report. While holding, cents are
+# measured from the name on screen, so a pitch that moved somewhere else
+# entirely produced absurd readings (a two-octave leap read +2400c on the note
+# we left, and octave glitches under interference read past 1200c). The hold
+# itself has to stay - it is what stops the name flickering when detection
+# oscillates - so only the number is bounded.
+# Set to the meter's own range so the badge never claims something the needle
+# cannot show: past this the needle is pinned at METER_RANGE anyway.
+# === driver: docs/note-latch-tuning.md - releasing the hold early instead was
+# === measured and rejected (broke flicker sealing on 2 fixtures). 65c (the
+# === hysteresis edge) was the alternative; product call was meter fidelity.
+NOTE_HOLD_CENTS_CEILING = 50.0
+
 
 @dataclass(frozen=True)
 class Note:
     name: str
     octave: int
-    cents: float  # deviation from the note's exact pitch, in (-50, +50]
+    # Deviation from the note's exact pitch, in [-50, +50]. A freshly chosen
+    # note lands in (-50, +50]; a name held through boundary wobble saturates
+    # at the bounds (NOTE_HOLD_CENTS_CEILING) rather than reporting the true
+    # distance, which is not something the meter can express.
+    cents: float
     freq_hz: float  # the measured frequency this was derived from
 
     @property
@@ -72,17 +89,24 @@ class NoteLatch:
     - dwell: it must stay out there for dwell_frames consecutive readings,
       so a vibrato peak that pokes past the boundary is not a note change.
 
-    While holding, reported cents simply exceed +-50 (the meter clamps the
-    needle), which reads as "sharp/flat past the end of the scale".
+    While holding, reported cents saturate at +-NOTE_HOLD_CENTS_CEILING (the
+    meter's own range, where the needle is already pinned), which reads as
+    "sharp/flat past the end of the scale". The true distance to the held
+    name is deliberately not reported: the pitch may have moved anywhere,
+    and a leap used to surface as e.g. +2400c on the note we left.
     """
 
     def __init__(
         self,
         hysteresis_cents: float = NOTE_HYSTERESIS_CENTS,
         dwell_frames: int = NOTE_DWELL_FRAMES,
+        ceiling_cents: float = NOTE_HOLD_CENTS_CEILING,
     ):
         self._hysteresis = hysteresis_cents
         self._dwell = dwell_frames
+        # deliberately independent of the hysteresis: one decides *whether*
+        # we are past the boundary, the other only how far we admit to being
+        self._ceiling = ceiling_cents
         self._note: Note | None = None
         self._beyond = 0
 
@@ -102,7 +126,15 @@ class NoteLatch:
             else:
                 self._beyond += 1
             if self._beyond < self._dwell:
-                return Note(held.name, held.octave, cents, freq_hz)
+                # Report "off the scale", not the raw distance: while the name
+                # is held the pitch may be anywhere, and the true deviation
+                # from *that* name is not something the meter can show.
+                return Note(
+                    held.name,
+                    held.octave,
+                    math.copysign(min(abs(cents), self._ceiling), cents),
+                    freq_hz,
+                )
 
         self._note = freq_to_note(freq_hz, a4_hz)
         self._beyond = 0
