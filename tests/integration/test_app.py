@@ -1,5 +1,7 @@
 """UI behavior offscreen: window wiring, readings, controls, device switching."""
 
+import json
+
 import pytest
 
 pytest.importorskip("PySide6")
@@ -279,3 +281,36 @@ class TestDeviceSelection:
         engine = window._engine
         assert engine._filled == 0 and engine._pending == 0
         window.close()
+
+
+def test_report_shortcut_writes_a_replayable_report(qapp, make_window, tmp_path, monkeypatch):
+    """Ctrl+R must save what the meter just showed, wired end to end: ring
+    buffer -> report directory -> a trace the promote tool can replay."""
+    from tuner.tools.promote import reproduce
+
+    monkeypatch.setenv("TUNER_REPORTS_DIR", str(tmp_path / "reports"))
+    fake = FakeAudioInput(tone(440.0, 0.5, instrument="violin"))
+    window = make_window(fake)
+    window.start()
+    fake.pump()
+    qapp.processEvents()
+
+    directory = window.save_report()
+    assert directory is not None and directory.exists()
+    assert not window._note.isHidden()  # the user is told where it went
+
+    meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
+    assert meta["a4_hz"] == float(window._a4_spin.value())
+    assert meta["detector"] == window._detector_combo.currentText()
+
+    captured, _, spans = reproduce(directory)
+    assert captured.frames and spans == []
+    window.close()
+
+
+def test_report_says_so_when_there_is_nothing_to_save(make_window, tmp_path, monkeypatch):
+    monkeypatch.setenv("TUNER_REPORTS_DIR", str(tmp_path / "reports"))
+    window = make_window()  # never started: the ring is empty
+    assert window.save_report() is None
+    assert "실패" in window._note.text()
+    window.close()

@@ -9,10 +9,11 @@
 │   meter_widget.py  미터 렌더링 (Qt 페인팅)          │
 │   meter_model.py   미터 계산 (색상·바늘각, 무-Qt)    │
 │   engine.py        audio→core 파이프라인 조립(무-Qt) │
+│   capture.py       직전 N초 링버퍼 + 리포트 저장      │
 ├──────────────────────┬──────────────────────────┤
 │ audio/  입력 경계      │ analysis/  오프라인 분석    │
 │   input.py Protocol  │   reference.py 주석기      │
-│   sounddevice_input  │       (테스트 전용 소비)     │
+│   sounddevice_input  │   trace.py 표시 트레이스 기록 │
 ├──────────────────────┴──────────────────────────┤
 │ core/       순수 DSP — 상위 레이어를 모름            │
 │   pitch.py     YIN 검출 (프레임 → Hz+confidence)   │
@@ -25,10 +26,13 @@ tools/   개발용 CLI — 아래 레이어 전부를 조립해 쓰는 최상위
 ```
 
 **의존 규칙**: 화살표는 항상 아래로만. `core`는 아무것도 import하지 않고,
-`app`은 `core`+`audio`를, `analysis`는 `core`만 쓴다. `tools`는 그 위에
+`app`은 `core`+`audio`+`analysis`(트레이스 **기록 포맷**만 — 앱과 도구가
+같은 파일 형식을 써야 현장 리포트를 오프라인 재생과 비교할 수 있다)를,
+`analysis`는 `core`만 쓴다. `tools`는 그 위에
 앉아 필요한 것을 아무거나 조립한다 — `annotate`/`build_note_bank`는
 `analysis`를, `playback`은 `audio`를, `demo`/`compare`는 `app`(창을 띄우므로)
-과 `core`를 쓴다. 순환·역류 금지가 이 코드베이스의 제1원칙.
+과 `core`를, `trace`는 `app`의 엔진을 Qt 없이 오프라인으로 돌리고,
+`promote`/`scoreboard`는 그 위에서 리포트·측정 기록을 다룬다. 순환·역류 금지가 이 코드베이스의 제1원칙.
 
 ## 데이터 흐름 (실시간)
 
@@ -78,6 +82,11 @@ tests/
 ├── fixtures/audio/  Iowa MIS 실악기 샘플 + .ref.json + 노이즈/간섭 변형
 └── fixtures/notes/  악기별 크로마틱 단음 뱅크 + bank.json(창 단위 피치)
 ```
+
+표시 지표(세그먼트 수, 짧은 표시 개수)와 "녹음 전체를 앱 파이프라인에
+통과시키기"의 정의는 `tools/trace.py` **한 곳**에 있고 테스트가 그것을
+import 한다 — 개발 도구와 스위트가 다른 것을 재기 시작하면 둘 다 못 믿는다
+(`docs/dev-loop.md`).
 
 Win/Mac 테스트는 분리하지 않는다 — 코드가 플랫폼 공용이므로 같은 스위트를
 CI 매트릭스(macos/windows, `.github/workflows/test.yml`)에서 실행하고,
@@ -131,3 +140,10 @@ while True:
   파일명에 `.snr`이 들어가면 완화된 노이즈 기준으로 채점.
 - **다른 OS 오디오 백엔드가 필요해지면**: `audio/input.py`의 `AudioInput`
   Protocol을 충족하는 구현을 추가하고 `__main__.py`에서 선택.
+- **사용자가 겪은 결함을 데이터로**: 앱에서 Ctrl+R → `~/.tuner/reports/<utc>/`
+  (오디오 + 표시 트레이스 + 코드 sha). `python -m tuner.tools.promote <report>`
+  가 **재현 여부부터** 판정하고(`--name` 을 주면 픽스처로 승격 + 주석 생성),
+  개발 루프 전체는 `docs/dev-loop.md`.
+- **표시 동작을 바꿀 때**: `python -m tuner.tools.trace <audio> --vs <rev>` 로
+  어느 구간이 달라졌는지 보고, `python -m tuner.tools.scoreboard --check` 로
+  게이트 아래 드리프트를 확인한다.

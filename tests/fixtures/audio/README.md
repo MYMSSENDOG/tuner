@@ -23,6 +23,12 @@ Preparation:
   or the mixture is genuinely periodic at the lower pitch and "which note
   is it" stops having a single right answer
 
+- field reports from the app (Ctrl+R) are promoted with `python -m
+  tuner.tools.promote <report> --name <name>`, which checks the report
+  replays frame-for-frame before copying it in and annotating it. Room
+  recordings carry far more noise than the MIS samples — name them with
+  `.snr` so they are graded by the noisy criteria
+
 `tests/test_real_audio.py` picks up any audio file dropped here
 automatically (wav/flac/ogg/aif/aiff), annotating on the fly when no
 `.ref.json` exists. Files with `.snr` in the name are graded with the

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import signal
+from pathlib import Path
 
 from PySide6.QtCore import QObject, QSettings, QSignalBlocker, Qt, QTimer, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -16,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tuner.app.capture import RING_SECONDS, FieldCapture
 from tuner.app.engine import DIGITAL_SILENCE_DBFS, TunerEngine, TunerReading
 from tuner.app.level_widget import InputLevelBar
 from tuner.app.meter_widget import MeterWidget
@@ -27,6 +30,11 @@ from tuner.core.detector import DETECTORS
 # tall layout would otherwise survive the update and re-stretch the window,
 # so the old key is simply left behind and the new default applies once.
 GEOMETRY_KEY = "geometry_v2"
+
+# One key, no menu: the moment worth reporting has already passed when the
+# player reaches for the mouse. Undiscoverable on purpose - the UI stays a
+# meter (README documents it), and nothing about it costs anything until used.
+REPORT_SHORTCUT = "Ctrl+R"
 
 
 def enable_ctrl_c(window: QMainWindow) -> QTimer:
@@ -72,7 +80,12 @@ class MainWindow(QMainWindow):
         self._settings = settings if settings is not None else QSettings("tuner", "tuner")
 
         self._bridge = _ReadingBridge()
-        self._engine = TunerEngine(audio_input, self._bridge.reading.emit)
+        self._capture = FieldCapture()
+        self._engine = TunerEngine(
+            audio_input, self._bridge.reading.emit, capture=self._capture
+        )
+        self._report_shortcut = QShortcut(QKeySequence(REPORT_SHORTCUT), self)
+        self._report_shortcut.activated.connect(self.save_report)
 
         self._meter = MeterWidget()
         self._bridge.reading.connect(self._on_reading)
@@ -125,6 +138,10 @@ class MainWindow(QMainWindow):
         self._no_signal.setWordWrap(True)
         self._no_signal.hide()
         layout.addWidget(self._no_signal)
+        self._note = QLabel()
+        self._note.setWordWrap(True)
+        self._note.hide()
+        layout.addWidget(self._note)
         layout.addWidget(self._meter, stretch=1)
         self._level_bar = InputLevelBar()
         layout.addWidget(self._level_bar)
@@ -195,6 +212,35 @@ class MainWindow(QMainWindow):
             self._silent_readings = 0
             if not self._no_signal.isHidden():
                 self._no_signal.hide()
+
+    def save_report(self) -> Path | None:
+        """Freeze the last seconds of input and what the meter showed.
+
+        Bound to Ctrl+R. The point is that it works *after* the fact: the
+        ring buffer already holds the sound that misbehaved.
+        """
+        try:
+            directory = self._capture.save(
+                detector=self._detector_combo.currentText(),
+                a4_hz=float(self._a4_spin.value()),
+                extra={"device": self._device_combo.currentText()},
+            )
+        except (RuntimeError, OSError) as error:
+            self._flash(f"리포트 저장 실패: {error}", ok=False)
+            return None
+        self._flash(f"직전 {RING_SECONDS:g}초 저장됨 - {directory}")
+        return directory
+
+    NOTE_MS = 6000  # long enough to read a path, short enough not to nag
+
+    def _flash(self, text: str, ok: bool = True) -> None:
+        colours = ("#3b5a3b", "#d6f5d6") if ok else ("#7a3b3b", "#ffd9d9")
+        self._note.setStyleSheet(
+            f"background-color: {colours[0]}; color: {colours[1]}; padding: 6px;"
+        )
+        self._note.setText(text)
+        self._note.show()
+        QTimer.singleShot(self.NOTE_MS, self._note.hide)
 
     def _on_detector_changed(self) -> None:
         # the audio thread must not be mid-callback while the buffer is swapped

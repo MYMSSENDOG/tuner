@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -17,6 +18,9 @@ from tuner.audio.input import AudioInput
 from tuner.core.detector import PitchDetector, YinDetector
 from tuner.core.notes import Note, NoteLatch
 from tuner.core.tracker import PitchTracker, State
+
+if TYPE_CHECKING:  # the capture imports this module, so keep the edge one-way
+    from tuner.app.capture import FieldCapture
 
 DIGITAL_SILENCE_DBFS = -120.0  # exact zeros: no OS permission / dead device
 
@@ -37,9 +41,12 @@ class TunerEngine:
         on_reading: Callable[[TunerReading], None],
         detector: PitchDetector | None = None,
         tracker_factory: Callable[[float], PitchTracker] | None = None,
+        capture: FieldCapture | None = None,
     ):
         self._audio = audio_input
         self._on_reading = on_reading
+        # optional rolling recorder (app/capture.py); None costs nothing
+        self._capture = capture
         self._a4_hz = 440.0
         self._sr = 0
         self._detector: PitchDetector = detector or YinDetector()
@@ -79,6 +86,8 @@ class TunerEngine:
         self._pending = 0
 
     def _on_block(self, block: np.ndarray) -> None:
+        if self._capture is not None:
+            self._capture.push_block(block, self._sr)
         rms = float(np.sqrt(np.mean(block * block)))
         self._level_dbfs = 20.0 * math.log10(rms) if rms > 0.0 else DIGITAL_SILENCE_DBFS
         n = len(block)
@@ -90,12 +99,16 @@ class TunerEngine:
         if self._filled < frame_size or self._pending < self._detector.hop_size:
             return
         self._pending = 0
-        tracked = self._tracker.update(self._detector.detect(self._buffer, self._sr))
+        raw = self._detector.detect(self._buffer, self._sr)
+        tracked = self._tracker.update(raw)
         if tracked.freq_hz:
             note = self._latch.update(tracked.freq_hz, self._a4_hz)
         else:
             note = None
             self._latch.reset()
-        self._on_reading(
-            TunerReading(state=tracked.state, note=note, level_dbfs=self._level_dbfs)
+        reading = TunerReading(
+            state=tracked.state, note=note, level_dbfs=self._level_dbfs
         )
+        if self._capture is not None:
+            self._capture.push_reading(reading, raw.freq_hz, raw.confidence)
+        self._on_reading(reading)

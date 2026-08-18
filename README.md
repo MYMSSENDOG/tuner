@@ -13,6 +13,10 @@ python -m tuner
 
 첫 실행 시 마이크 권한을 허용해야 한다.
 
+**Ctrl+R** — 방금 이상하게 동작했다면 누른다. 직전 10초의 오디오와 그때
+화면에 표시된 값이 `~/.tuner/reports/<시각>/` 에 저장된다. 재현·픽스처화는
+`python -m tuner.tools.promote <리포트>`.
+
 ## 테스트
 
 ```bash
@@ -31,11 +35,19 @@ pytest -m crosscheck                      # 느린 정답 감사 (pip install -e
 글리산도 추종)와 실악기 녹음(Iowa MIS 샘플을 오프라인 고정밀 주석기로
 라벨링) 양쪽으로 파이프라인을 검증한다.
 
+스위트가 재는 값(정확도 분위수, 지터, 반응 ms, 표시 세그먼트 …)은 런마다
+`metrics/runs/` 에 기록된다 — 게이트는 통과하는데 값만 나빠지는 드리프트를
+`python -m tuner.tools.scoreboard` 로 본다.
+
 ## 도구
 
 ```bash
 python -m tuner.tools.demo 오디오.wav --loop       # 파일 들으며 튜너 동작 관찰
 python -m tuner.tools.compare 오디오.wav --loop    # 같은 음원, 파라미터 변형 8개(4x2) 나란히 비교
+python -m tuner.tools.trace 오디오.wav              # 표시 트레이스 + 요약(세그먼트/짧은 표시)
+python -m tuner.tools.trace 오디오.wav --vs HEAD~1  # 그 리비전과 표시가 어디서 달라졌는지
+python -m tuner.tools.scoreboard                   # 스위트가 잰 값, 런끼리 비교 (--vs/--check)
+python -m tuner.tools.promote 리포트/                # 현장 리포트: 재현 확인 후 픽스처로 승격
 python -m tuner.tools.annotate 녹음.wav -w 0.05    # 주파수 주석(.ref.json) 생성
 python -m tuner.tools.add_noise 녹음.wav --snr 20  # 노이즈/간섭 변형 픽스처 생성
 python tests/render_sequence.py oboe tchaik4 t.wav # 뱅크에서 시퀀스 wav 렌더
@@ -50,6 +62,7 @@ python tests/render_sequence.py oboe tchaik4 t.wav # 뱅크에서 시퀀스 wav 
 | 새 알고리즘/기능 영역 진입, 새 테스트 데이터 확보 | [정답 데이터 먼저](docs/process/ground-truth.md) |
 | 피처 개발 시작/마무리, 버그 수정, 판정 기준·파라미터 조정 | [회귀 봉인](docs/process/regression.md) |
 | 체감 품질(부드러움·반응·깜빡임 등) 조정 | [주관적 품질 작업](docs/process/subjective-ux.md) |
+| 개발 인프라(측정 기록·전후 비교·현장 캡처) 손보기 | [개발 루프 도구](docs/dev-loop.md) |
 | 모듈·구현체 추가, 구조 변경, 추상화 도입 판단 | [프로젝트 구조 + 구조 규칙](docs/ARCHITECTURE.md) |
 | 설계·알고리즘 접근 선택 (과거 기각된 시도 확인) | [기각·결정 인덱스](docs/decisions/INDEX.md) — 관련 항목만 열기 |
 | 검출 로직 이해·수정 (게이트/YIN/옥타브/스무딩/래치) | [음정 측정 파이프라인](docs/pitch-pipeline.md) |

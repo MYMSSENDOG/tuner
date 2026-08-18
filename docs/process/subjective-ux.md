@@ -26,5 +26,8 @@
   (`SMOOTHING_ENABLED`, `NOTE_LATCH_ENABLED`, `INPUT_GATE_RMS` —
   목록은 `docs/pitch-pipeline.md` "표시 안정화 스위치").
 - 단일 설정 관찰: `python -m tuner.tools.demo <audio> [--loop]`.
+- 바꾸기 전/후가 **어느 구간에서** 달라졌는지: `python -m tuner.tools.trace
+  <audio> --vs <rev>` (표시 이름·cent 를 프레임 단위로 비교). 체감 지표의
+  수치 변화는 `python -m tuner.tools.scoreboard --vs <rev>`.
 - UI 설정은 최소화가 제품 방침 — 조절 파라미터는 UI 노출 대신 실측
   고정값을 먼저 시도한다.
