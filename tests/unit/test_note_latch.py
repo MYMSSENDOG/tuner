@@ -1,4 +1,4 @@
-"""Note-name latch: hysteresis + dwell, and its on/off switch."""
+"""Note-name latch: release window + dwell, and its on/off switch."""
 
 import pytest
 
@@ -20,8 +20,8 @@ def test_plain_tracking_of_nearest_note():
 
 # The product rule: the number never leaves +-50. At +51c the instrument is
 # not "51 sharp of A4", it is 49 flat of A#4 — and that is what the meter says.
-# Everything else here (hysteresis, dwell) may only act where it does not
-# contradict this. (Driver: docs/note-latch-tuning.md.)
+# Everything else here (the release window, the dwell) may only act where it
+# does not contradict this. (Driver: docs/note-latch-tuning.md.)
 METER_RANGE = 50.0
 
 

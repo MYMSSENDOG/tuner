@@ -168,7 +168,7 @@ def test_freeze_bound_is_actually_doing_something(monkeypatch):
         pytest.skip("fixture not present")
 
     class _NoRelease(notes_mod.NoteLatch):
-        """Only the release window is disabled - hysteresis and dwell keep
+        """Only the release window is disabled - the dwell keeps
         behaving normally, or this would measure a differently-broken latch."""
 
         def __init__(self, *args, **kwargs):

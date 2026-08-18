@@ -9,14 +9,12 @@ NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
 A4_MIDI = 69
 
-# How far past the halfway point a pitch must travel before the displayed
-# note name changes. Without it, an instrument sitting near a semitone
-# boundary — exactly what happens when it is badly out of tune, i.e. while
-# you are tuning it — flickers between two names on every vibrato cycle.
+# Whether the displayed note name is chosen by policy at all. With this off
+# every frame shows the raw nearest note, which is what a detection glitch
+# repaints the whole meter with.
 # === display switch: set False for the raw nearest note every frame ===
 NOTE_LATCH_ENABLED = True
 
-NOTE_HYSTERESIS_CENTS = 15.0
 NOTE_DWELL_FRAMES = 12  # ~70ms at the default hop; measured against vibrato
 
 # Ceiling on the deviation a *held* note may report. While holding, cents are
@@ -33,8 +31,8 @@ NOTE_DWELL_FRAMES = 12  # ~70ms at the default hop; measured against vibrato
 # the dwell, and its number is pinned here meanwhile.
 # === product rule: the number never leaves +-50. Read the meter, not the
 # === latch: at +51c the instrument is 49c flat of the next note, and that is
-# === what a tuner should say. Trying 65c (the hysteresis edge) instead was
-# === rejected on sight - docs/note-latch-tuning.md.
+# === what a tuner should say. Trying 65c instead was rejected on sight -
+# === docs/note-latch-tuning.md.
 NOTE_HOLD_CENTS_CEILING = 50.0
 
 # Past the meter's range the pitch belongs to the neighbouring note, so the
@@ -96,45 +94,41 @@ def freq_to_note(freq_hz: float, a4_hz: float = 440.0) -> Note:
 
 
 class NoteLatch:
-    """Chooses which note name to display, with hysteresis and dwell.
+    """Chooses which note name to display: the nearest one, except across a
+    detection glitch.
 
-    A pitch parked near a semitone boundary — which is exactly the case when
-    an instrument is badly out of tune, i.e. while you are tuning it — would
-    otherwise flip names on every vibrato cycle. Two guards:
+    Departures from the held note fall into two measured populations, and the
+    distance alone tells them apart:
 
-    - hysteresis: the pitch must pass NOTE_HYSTERESIS_CENTS beyond the
-      boundary at all before a change is even considered,
-    - dwell: it must stay out there for dwell_frames consecutive readings,
-      so a vibrato peak that pokes past the boundary is not a note change.
+    - within the release window (NOTE_RELEASE_LOW_CENTS..HIGH) the pitch has
+      simply moved to a neighbouring note, so the name follows immediately and
+      the number restarts from that note's side. Holding on would only pin the
+      old name at the end of the scale.
+    - past the window it is an octave-scale jump (+-560..2521c measured under
+      interference), which is the detector glitching rather than the player
+      changing note. Those must survive `dwell_frames` consecutive readings
+      before the name moves, and the cents reported meanwhile saturate at
+      +-NOTE_HOLD_CENTS_CEILING — the true distance is deliberately not
+      reported, as a leap used to surface as e.g. +2400c on the note we left.
 
-    Both guards stop at the release window
-    (NOTE_RELEASE_LOW_CENTS..NOTE_RELEASE_HIGH_CENTS = the meter's range out to
-    a couple of semitones). Once the pitch is past +-50 it is nearer the next
-    note, so the name moves there immediately and the number restarts from that
-    note's side; holding on would only pin the old name at the end of the
-    scale. The cost is real and measured: a vibrato that straddles a boundary
-    now flips names on every cycle (flute_vib_C6: 3 -> 15 segments).
-
-    Beyond the window the dwell still rules, because that distance is a
-    detection glitch rather than a note change. Cents reported while it holds
-    saturate at +-NOTE_HOLD_CENTS_CEILING; the true distance is deliberately
-    not reported, as a leap used to surface as e.g. +2400c on the note we left.
+    So the dwell no longer guards semitone boundaries, only glitch distances.
+    The cost of that is real and measured: a vibrato straddling a boundary now
+    repaints the name on every cycle (flute_vib_C6: 3 -> 15 segments). The
+    +-50 product rule wins anyway — see docs/note-latch-tuning.md.
     """
 
     def __init__(
         self,
-        hysteresis_cents: float = NOTE_HYSTERESIS_CENTS,
         dwell_frames: int = NOTE_DWELL_FRAMES,
         ceiling_cents: float = NOTE_HOLD_CENTS_CEILING,
         release_low_cents: float = NOTE_RELEASE_LOW_CENTS,
         release_high_cents: float = NOTE_RELEASE_HIGH_CENTS,
     ):
-        self._hysteresis = hysteresis_cents
         self._dwell = dwell_frames
         self._release_low = release_low_cents
         self._release_high = release_high_cents
-        # deliberately independent of the hysteresis: one decides *whether*
-        # we are past the boundary, the other only how far we admit to being
+        # independent of the window: that decides *whether* the name moves,
+        # this only bounds how far off we admit to being while it does not
         self._ceiling = ceiling_cents
         self._note: Note | None = None
         self._beyond = 0
@@ -157,7 +151,10 @@ class NoteLatch:
                 self._note = freq_to_note(freq_hz, a4_hz)
                 self._beyond = 0
                 return self._note
-            if abs(cents) <= 50.0 + self._hysteresis:
+            # only two cases reach here, the window having returned already:
+            # inside the meter's range (nothing to decide) or past the window
+            # (a glitch, which has to prove itself for the whole dwell)
+            if abs(cents) < self._release_low:
                 self._beyond = 0
             else:
                 self._beyond += 1

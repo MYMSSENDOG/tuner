@@ -177,24 +177,48 @@ def _interpolated_peak(
     return (i + offset) * bin_hz, float(b)
 
 
+def _dtft_grid_magnitudes(
+    x: np.ndarray, t: np.ndarray, f_lo: float, df: float, points: int
+) -> np.ndarray:
+    """|DTFT(x)(f)| at f_lo, f_lo+df, ... — an arithmetic progression.
+
+    The obvious form, exp(-2j*pi*outer(freqs, t)) @ x, costs one complex
+    exponential per (frequency, sample) pair and was 90% of this detector's
+    run time — over its real-time budget on its own. But the frequencies are
+    equally spaced, so their phasors are too:
+
+        exp(-2j*pi*(f_lo + i*df)*t) = exp(-2j*pi*f_lo*t) * exp(-2j*pi*df*t)**i
+
+    which turns the grid into two exponentials plus a running multiply. The
+    repeated product drifts by ~1e-16 per step on unit-modulus values, far
+    below the resolution this feeds.
+    """
+    y = x * np.exp(-2j * np.pi * f_lo * t)
+    ratio = np.exp(-2j * np.pi * df * t)
+    magnitudes = np.empty(points)
+    for i in range(points):
+        magnitudes[i] = abs(y.sum())
+        if i + 1 < points:
+            y *= ratio
+    return magnitudes
+
+
 def _dtft_refine(x: np.ndarray, sr: int, f_lo: float, f_hi: float, rounds: int) -> float:
     """Maximize |DTFT(x)(f)| over continuous f by iterative grid shrinking.
 
     Equivalent to maximum-likelihood frequency estimation of a windowed
     sinusoid; precision is limited only by interval shrinkage (÷4 per round
-    with a 9-point grid), not by any bin grid. Each round is one vectorized
-    matrix product, so this stays fast enough for real-time use at low round
-    counts while the offline annotator runs it to numerical exhaustion.
+    with a 9-point grid), not by any bin grid. Cheap enough for real-time use
+    at low round counts, while the offline annotator runs it to numerical
+    exhaustion.
     """
     t = np.arange(len(x)) / sr
     points = 9
     best = (f_lo + f_hi) / 2
     for _ in range(rounds):
-        freqs = np.linspace(f_lo, f_hi, points)
-        magnitudes = np.abs(np.exp(-2j * np.pi * np.outer(freqs, t)) @ x)
-        i = int(np.argmax(magnitudes))
-        best = freqs[i]
         step = (f_hi - f_lo) / (points - 1)
+        magnitudes = _dtft_grid_magnitudes(x, t, f_lo, step, points)
+        best = f_lo + int(np.argmax(magnitudes)) * step
         f_lo, f_hi = best - step, best + step
     return best
 
