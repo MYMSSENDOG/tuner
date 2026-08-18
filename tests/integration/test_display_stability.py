@@ -52,7 +52,12 @@ CASES = [
     ("violin_scale_G3B3.aiff", 5, 1),
     ("violin_arco_A4.aif", 1, 1),
     ("violin_arco_G3.snr20.wav", 1, 1),
-    ("flute_vib_C6.aif", 1, 2),
+    # 14: this note vibrates across a semitone boundary (C6 +30..+70c), and
+    # the rule that the number never leaves +-50 means the name follows the
+    # pitch to whichever side it is on. Was 2 while the name was held past
+    # the boundary instead - a motionless "+50" for up to 75ms per cycle.
+    # === driver: docs/note-latch-tuning.md "+-50 rule" - product decision.
+    ("flute_vib_C6.aif", 1, 14),
     ("trumpet_vib_A4.aif", 1, 1),
     ("trumpet_novib_G3.bg-flute_vib_C6.snr15.wav", 1, 2),
     ("cello_arco_A3.aif", 1, 1),
@@ -89,6 +94,12 @@ CENTS_RANGE_CASES = [
 # wobble, but never by a whole semitone.
 MAX_DISPLAYED_CENTS = 100.0
 
+# The real bound: the meter reads -50..+50 and the number never leaves it.
+# Past the boundary the pitch belongs to the neighbouring note and is shown
+# there instead. MAX_DISPLAYED_CENTS above only survives for the power check,
+# which needs headroom above this to tell 'clamped' from 'not clamped'.
+METER_RANGE = 50.0
+
 
 @pytest.mark.parametrize(
     "filename", CENTS_RANGE_CASES, ids=[c.split(".")[0] for c in CENTS_RANGE_CASES]
@@ -106,9 +117,70 @@ def test_displayed_cents_stay_in_range(filename):
     assert notes, "no readings produced"
     worst = max(notes, key=lambda n: abs(n.cents))
     print(f"\n{filename}: worst {worst.label} {worst.cents:+.0f}c of {len(notes)} readings")
-    assert abs(worst.cents) < MAX_DISPLAYED_CENTS, (
-        f"displayed {worst.label} {worst.cents:+.0f}c"
+    assert abs(worst.cents) <= METER_RANGE, (
+        f"displayed {worst.label} {worst.cents:+.0f}c - off the meter's scale"
     )
+
+
+# Readings whose number is stuck at the ceiling: the needle is pinned there
+# too, so nothing on screen moves. A pitch parked just past the boundary is
+# exactly what tuning an out-of-tune instrument looks like, so this cannot be
+# allowed to last — it read as the meter having stopped working.
+FROZEN_FRAMES_ALLOWED = 40  # ~230ms; worst measured is 16 frames / 93ms
+
+
+def longest_frozen_run(notes: list[Note | None]) -> int:
+    from tuner.core.notes import NOTE_HOLD_CENTS_CEILING
+
+    longest = run = 0
+    for note in notes:
+        if note is not None and abs(note.cents) >= NOTE_HOLD_CENTS_CEILING - 0.5:
+            run += 1
+            longest = max(longest, run)
+        else:
+            run = 0
+    return longest
+
+
+@pytest.mark.parametrize(
+    "filename", CENTS_RANGE_CASES, ids=[c.split(".")[0] for c in CENTS_RANGE_CASES]
+)
+def test_display_does_not_freeze(filename):
+    path = FIXTURE_DIR / filename
+    if not path.exists():
+        pytest.skip(f"{filename} not present")
+    frozen = longest_frozen_run(displayed_notes(path))
+    print()
+    print(f"{filename}: longest frozen run {frozen} frames")
+    assert frozen <= FROZEN_FRAMES_ALLOWED
+
+
+def test_freeze_bound_is_actually_doing_something(monkeypatch):
+    """Power check: with the release window shut, the same recording freezes
+    for far longer. The pitch there genuinely wanders +52..+68, so holding the
+    old name is what pins the number at the end of the scale.
+    """
+    from tuner.app import engine as engine_mod
+    from tuner.core import notes as notes_mod
+
+    path = FIXTURE_DIR / "cello_scale_A2Gb3.aiff"
+    if not path.exists():
+        pytest.skip("fixture not present")
+
+    class _NoRelease(notes_mod.NoteLatch):
+        """Only the release window is disabled - hysteresis and dwell keep
+        behaving normally, or this would measure a differently-broken latch."""
+
+        def __init__(self, *args, **kwargs):
+            kwargs["release_low_cents"] = float("inf")
+            super().__init__(*args, **kwargs)
+
+    now = longest_frozen_run(displayed_notes(path))
+    monkeypatch.setattr(engine_mod, "NoteLatch", _NoRelease)
+    held = longest_frozen_run(displayed_notes(path))
+    print()
+    print(f"cello scale longest frozen run: now {now}, without release {held}")
+    assert held > FROZEN_FRAMES_ALLOWED >= now
 
 
 def test_cents_ceiling_is_actually_doing_something(monkeypatch):
@@ -138,12 +210,18 @@ def test_cents_ceiling_is_actually_doing_something(monkeypatch):
 
 
 def test_stabilization_is_actually_doing_something(monkeypatch):
-    """Power check: with the note latch off, a vibrato note that straddles a
-    semitone boundary must flicker — proving the test above can fail and the
-    latch is what prevents it."""
+    """Power check: with the note latch off, a recording where the detector
+    jumps an octave under interference must flicker, proving the test above
+    can fail and the latch is what prevents it.
+
+    This used to point at the vibrato flute. It no longer can: under the +-50
+    rule the name follows a boundary-straddling vibrato by design, so latch
+    and no-latch score the same there. What the latch still buys is exactly
+    this - suppressing octave glitches under interference.
+    """
     from tuner.core import notes
 
-    path = FIXTURE_DIR / "flute_vib_C6.aif"
+    path = FIXTURE_DIR / "trumpet_novib_G3.bg-flute_vib_C6.snr15.wav"
     if not path.exists():
         pytest.skip("fixture not present")
 

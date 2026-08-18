@@ -18,35 +18,100 @@ def test_plain_tracking_of_nearest_note():
     assert latch.update(cents_off(A4, 30)).label == "A4"
 
 
-def test_holds_name_just_past_the_boundary():
-    """+55c is past halfway but inside hysteresis: still A4.
+# The product rule: the number never leaves +-50. At +51c the instrument is
+# not "51 sharp of A4", it is 49 flat of A#4 — and that is what the meter says.
+# Everything else here (hysteresis, dwell) may only act where it does not
+# contradict this. (Driver: docs/note-latch-tuning.md.)
+METER_RANGE = 50.0
 
-    The reported deviation saturates at the meter's range rather than reading
-    +55 — while a name is held the true distance to it is not something the
-    meter can show, and the needle is already pinned there.
-    (Driver: docs/note-latch-tuning.md; 65c was the measured alternative.)
+
+def test_crossing_the_boundary_moves_to_the_neighbour():
+    latch = NoteLatch()
+    latch.update(A4)
+    assert latch.update(cents_off(A4, 48)).label == "A4"
+
+    crossed = latch.update(cents_off(A4, 52))
+    assert crossed.label == "A#4"
+    assert crossed.cents == pytest.approx(-48.0, abs=0.5)
+
+
+def test_the_number_never_leaves_the_scale():
+    """Sweep a glissando across two boundaries; every reading must be
+    displayable on the meter, and the name must be the one it is measured
+    from.
+
+    Before this rule the same sweep sat at the end of the scale waiting out
+    the dwell — measured at up to 1521ms motionless on cello_scale_A2Gb3.
     """
     latch = NoteLatch()
     latch.update(A4)
-    held = latch.update(cents_off(A4, 55))
-    assert held.label == "A4"
-    assert held.cents == pytest.approx(notes.NOTE_HOLD_CENTS_CEILING)
+    for cents in range(0, 260, 4):
+        note = latch.update(cents_off(A4, cents))
+        assert abs(note.cents) <= METER_RANGE, f"{note.label} {note.cents:+.0f}c"
+        # the name is genuinely the nearest one, not a leftover
+        assert note.freq_hz == pytest.approx(
+            note_to_freq(note.name, note.octave) * 2 ** (note.cents / 1200)
+        )
 
 
-def test_vibrato_peak_does_not_relabel():
-    """Excursions beyond the boundary shorter than dwell keep the name."""
+def test_vibrato_across_a_boundary_flips_the_name():
+    """The accepted cost of the rule above, stated outright.
+
+    A vibrato straddling a semitone boundary now repaints the name on every
+    cycle — the exact thing the dwell was built to stop (flute_vib_C6: 3 -> 15
+    segments). The rule wins anyway: a motionless number reads as a broken
+    meter, and the pitch really is on both sides of the boundary.
+    """
+    latch = NoteLatch()
+    latch.update(A4)
+    labels = [latch.update(cents_off(A4, c)).label for c in (40, 60, 40, 60)]
+    assert labels == ["A4", "A#4", "A4", "A#4"]
+
+
+# A move to a neighbouring note is not the boundary wobble the dwell exists to
+# absorb. Waiting it out only spends the dwell showing the old name pinned at
+# the end of the scale — the "why does it stop at +-50 on the way" report.
+@pytest.mark.parametrize(
+    "cents,expected",
+    [(100, "A#4"), (-100, "G#4"), (200, "B4"), (-200, "G4")],
+    ids=["semitone-up", "semitone-down", "tone-up", "tone-down"],
+)
+def test_neighbouring_note_relabels_without_waiting(cents, expected):
+    latch = NoteLatch()
+    latch.update(A4)
+    moved = latch.update(cents_off(A4, cents))
+    assert moved.label == expected
+    assert abs(moved.cents) < 5.0  # reads as the new note, not off the old one
+
+
+def test_release_window_has_an_upper_bound():
+    """Power check for the bound: an octave-scale departure must still wait
+    out the dwell. Under interference the detector jumps that far on its own
+    (+-560..2521c measured), and relabelling those on sight is what broke the
+    flicker seal — the window is what separates the two cases.
+    """
+    latch = NoteLatch()
+    latch.update(A4)
+    held = [latch.update(cents_off(A4, 1200)) for _ in range(11)]
+    assert [n.label for n in held] == ["A4"] * 11
+
+
+def test_glitch_excursion_shorter_than_dwell_keeps_the_name():
+    """Excursions past the *release window* (i.e. octave-scale, a detection
+    glitch) shorter than the dwell still keep the name — that guard is intact,
+    it just no longer applies to distances the meter can express."""
     latch = NoteLatch(dwell_frames=12)
     latch.update(A4)
-    for _ in range(8):  # 8 frames out, then back — a vibrato peak
-        assert latch.update(cents_off(A4, 70)).label == "A4"
+    for _ in range(8):
+        assert latch.update(cents_off(A4, 1200)).label == "A4"
     assert latch.update(A4).label == "A4"
 
 
-def test_sustained_move_relabels():
+def test_sustained_glitch_eventually_relabels():
     latch = NoteLatch(dwell_frames=12)
     latch.update(A4)
-    labels = [latch.update(cents_off(A4, 70)).label for _ in range(20)]
-    assert labels[-1] == "A#4"
+    labels = [latch.update(cents_off(A4, 1200)).label for _ in range(20)]
+    assert labels[-1] == "A5"
     assert labels.count("A4") == 11  # holds until the dwell-th frame, then switches
 
 

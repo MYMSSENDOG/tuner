@@ -25,22 +25,40 @@ NOTE_DWELL_FRAMES = 12  # ~70ms at the default hop; measured against vibrato
 # we left, and octave glitches under interference read past 1200c). The hold
 # itself has to stay - it is what stops the name flickering when detection
 # oscillates - so only the number is bounded.
-# Set to the meter's own range so the badge never claims something the needle
-# cannot show: past this the needle is pinned at METER_RANGE anyway.
-# === driver: docs/note-latch-tuning.md - releasing the hold early instead was
-# === measured and rejected (broke flicker sealing on 2 fixtures). 65c (the
-# === hysteresis edge) was the alternative; product call was meter fidelity.
+# Set to the meter's own range: the badge must never claim a deviation the
+# scale cannot show. Past this the pitch is closer to the neighbouring note,
+# and that is what gets displayed - see NOTE_RELEASE_LOW_CENTS - so in normal
+# use the clamp is unreachable. It survives for one case only: a departure
+# past the release window (an octave-scale detection glitch) still waits out
+# the dwell, and its number is pinned here meanwhile.
+# === product rule: the number never leaves +-50. Read the meter, not the
+# === latch: at +51c the instrument is 49c flat of the next note, and that is
+# === what a tuner should say. Trying 65c (the hysteresis edge) instead was
+# === rejected on sight - docs/note-latch-tuning.md.
 NOTE_HOLD_CENTS_CEILING = 50.0
+
+# Past the meter's range the pitch belongs to the neighbouring note, so the
+# name moves there at once rather than sitting at the end of the scale waiting
+# out the dwell. This is the product rule above, expressed as the point where
+# the hold lets go.
+# The upper bound is what keeps the dwell in charge of the case it was proven
+# on: under interference the detector jumps an octave or more (+-560 to 2521c
+# measured), which is a glitch and not a note change. Dropping the bound costs
+# 3 more fixtures their flicker seal (89 -> 105 segments).
+# === driver: docs/note-latch-tuning.md "즉시 재표기 창"
+NOTE_RELEASE_LOW_CENTS = 50.0
+NOTE_RELEASE_HIGH_CENTS = 250.0
 
 
 @dataclass(frozen=True)
 class Note:
     name: str
     octave: int
-    # Deviation from the note's exact pitch, in [-50, +50]. A freshly chosen
-    # note lands in (-50, +50]; a name held through boundary wobble saturates
-    # at the bounds (NOTE_HOLD_CENTS_CEILING) rather than reporting the true
-    # distance, which is not something the meter can express.
+    # Deviation from the note's exact pitch. A freshly chosen note lands in
+    # (-50, +50]; a name held through boundary wobble reads out to the edge of
+    # that wobble band and saturates there (NOTE_HOLD_CENTS_CEILING) rather
+    # than reporting the true distance, which the meter cannot express. The
+    # needle stops at +-50 regardless (meter_model.needle_angle_deg).
     cents: float
     freq_hz: float  # the measured frequency this was derived from
 
@@ -89,11 +107,18 @@ class NoteLatch:
     - dwell: it must stay out there for dwell_frames consecutive readings,
       so a vibrato peak that pokes past the boundary is not a note change.
 
-    While holding, reported cents saturate at +-NOTE_HOLD_CENTS_CEILING (the
-    meter's own range, where the needle is already pinned), which reads as
-    "sharp/flat past the end of the scale". The true distance to the held
-    name is deliberately not reported: the pitch may have moved anywhere,
-    and a leap used to surface as e.g. +2400c on the note we left.
+    Both guards stop at the release window
+    (NOTE_RELEASE_LOW_CENTS..NOTE_RELEASE_HIGH_CENTS = the meter's range out to
+    a couple of semitones). Once the pitch is past +-50 it is nearer the next
+    note, so the name moves there immediately and the number restarts from that
+    note's side; holding on would only pin the old name at the end of the
+    scale. The cost is real and measured: a vibrato that straddles a boundary
+    now flips names on every cycle (flute_vib_C6: 3 -> 15 segments).
+
+    Beyond the window the dwell still rules, because that distance is a
+    detection glitch rather than a note change. Cents reported while it holds
+    saturate at +-NOTE_HOLD_CENTS_CEILING; the true distance is deliberately
+    not reported, as a leap used to surface as e.g. +2400c on the note we left.
     """
 
     def __init__(
@@ -101,9 +126,13 @@ class NoteLatch:
         hysteresis_cents: float = NOTE_HYSTERESIS_CENTS,
         dwell_frames: int = NOTE_DWELL_FRAMES,
         ceiling_cents: float = NOTE_HOLD_CENTS_CEILING,
+        release_low_cents: float = NOTE_RELEASE_LOW_CENTS,
+        release_high_cents: float = NOTE_RELEASE_HIGH_CENTS,
     ):
         self._hysteresis = hysteresis_cents
         self._dwell = dwell_frames
+        self._release_low = release_low_cents
+        self._release_high = release_high_cents
         # deliberately independent of the hysteresis: one decides *whether*
         # we are past the boundary, the other only how far we admit to being
         self._ceiling = ceiling_cents
@@ -121,6 +150,13 @@ class NoteLatch:
         held = self._note
         if held is not None:
             cents = (midi_float - note_midi(held.name, held.octave)) * 100.0
+            if self._release_low <= abs(cents) <= self._release_high:
+                # Past the meter's range: the pitch is nearer this note's
+                # neighbour, so show that instead of claiming the old name is
+                # off the scale. Only glitches land past the window.
+                self._note = freq_to_note(freq_hz, a4_hz)
+                self._beyond = 0
+                return self._note
             if abs(cents) <= 50.0 + self._hysteresis:
                 self._beyond = 0
             else:

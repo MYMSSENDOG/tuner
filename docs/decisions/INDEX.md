@@ -19,3 +19,4 @@
 | [D-001](D-001-ratio-bound.md) | core/pitch 옥타브 판정 | CMNDF 골 깊이 비율 조건 — 두 번 시도, 두 번 기각 |
 | [D-002](D-002-divide-rewrite.md) | core/spectral 옥타브 판정 | 콤 커버리지를 "부분음 직접 확인"으로 재작성 — 코퍼스 전체에서 분리 실패 |
 | [D-003](D-003-two-pass-noise.md) | core/detector | 노이즈 대응용 2-pass YIN — 목적엔 무효, 이후 저역 확장용으로 부활한 사례 |
+| [D-004](D-004-cooldown-latch.md) | core/notes 음이름 래치 | 쿨다운 래치(즉시 재표기 후 재변경 금지) — 간섭에서 틀린 이름을 보호해 깜빡임 악화 |
