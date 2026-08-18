@@ -23,6 +23,11 @@ from tuner.app.trace_widget import PitchTraceWidget
 from tuner.audio.input import AudioInput
 from tuner.core.detector import DETECTORS
 
+# Bumped when the default window size changes: a stored geometry from the
+# tall layout would otherwise survive the update and re-stretch the window,
+# so the old key is simply left behind and the new default applies once.
+GEOMETRY_KEY = "geometry_v2"
+
 
 def enable_ctrl_c(window: QMainWindow) -> QTimer:
     """Make Ctrl+C close the window (and thus quit cleanly via closeEvent).
@@ -128,7 +133,7 @@ class MainWindow(QMainWindow):
         self._silent_readings = 0
         central.setStyleSheet("background-color: #3b4252; color: #c7d2e3;")
         self.setCentralWidget(central)
-        self.resize(520, 650)
+        self.resize(520, 460)
         self._restore_settings()
 
     def start(self) -> None:
@@ -160,7 +165,7 @@ class MainWindow(QMainWindow):
 
         self._pin_check.setChecked(bool(s.value("always_on_top", False, type=bool)))
 
-        geometry = s.value("geometry")
+        geometry = s.value(GEOMETRY_KEY)
         if geometry is not None:
             self.restoreGeometry(geometry)
 
@@ -170,7 +175,7 @@ class MainWindow(QMainWindow):
         s.setValue("device_name", self._device_combo.currentText())
         s.setValue("detector_name", self._detector_combo.currentText())
         s.setValue("always_on_top", self._pin_check.isChecked())
-        s.setValue("geometry", self.saveGeometry())
+        s.setValue(GEOMETRY_KEY, self.saveGeometry())
         s.sync()
 
     # readings arrive every 5.8ms; ~2s of EXACT digital silence means the OS

@@ -1,4 +1,4 @@
-"""Analog cent meter widget (-50..+50) with needle, cents badge and note bar."""
+"""Analog cent meter widget (-50..+50) with needle, cents badge and note badge."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ class MeterWidget(QWidget):
         self._reading: TunerReading | None = None
         self._last_ok: TunerReading | None = None
         self._last_ok_at = 0.0
-        self.setMinimumSize(420, 420)
+        self.setMinimumSize(380, 260)
 
     def set_reading(self, reading: TunerReading) -> None:
         self._reading = reading
@@ -65,14 +65,29 @@ class MeterWidget(QWidget):
     # geometry helpers -----------------------------------------------------
 
     def _pivot_and_radius(self) -> tuple[QPointF, float]:
+        top = self._top_strip_height()
         w = self.width()
-        h = self.height() - self._note_bar_height()
-        pivot = QPointF(w / 2, h * 0.92)
+        h = self.height() - top
+        pivot = QPointF(w / 2, top + h * 0.92)
         radius = min(w * 0.46, h * 0.82)
         return pivot, radius
 
-    def _note_bar_height(self) -> int:
-        return int(self.height() * 0.35)
+    def _top_strip_height(self) -> int:
+        """Band above the dial holding the frequency readout and note badge.
+
+        The dial only occupies the lower ~55% of its bounding box (the needle
+        sweeps +-50 deg from a bottom-centre pivot), so the corners above it
+        were dead space — the note now lives there instead of in a bar below,
+        which is what makes the window short.
+        """
+        return max(46, int(self.height() * 0.22))
+
+    def _note_badge_rect(self) -> QRectF:
+        strip = self._top_strip_height()
+        pad = strip * 0.12
+        height = strip - 2 * pad
+        width = height * 2.1
+        return QRectF(self.width() - pad - width, pad, width, height)
 
     @staticmethod
     def _point(pivot: QPointF, radius: float, cents: float) -> QPointF:
@@ -93,7 +108,7 @@ class MeterWidget(QWidget):
         display, ghost = self._display_reading()
         self._draw_scale(painter, pivot, radius)
         self._draw_header(painter, display)
-        self._draw_note_bar(painter, display, ghost)
+        self._draw_note_badge(painter, display, ghost)
 
         reading = self._reading
         if display is not None and display.note is not None:
@@ -144,28 +159,37 @@ class MeterWidget(QWidget):
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
 
     def _draw_header(self, painter: QPainter, display: TunerReading | None) -> None:
+        """Measured frequency, left of the note badge. The note name itself is
+        the badge's job now, so it is no longer repeated here."""
         if display is None or display.note is None:
             return
+        strip = self._top_strip_height()
         painter.setPen(QColor("#6fa8dc"))
-        painter.setFont(self._font(16, bold=True))
-        text = f"{display.note.label}: {display.note.freq_hz:.0f}Hz"
+        painter.setFont(self._font(int(strip * 0.26), bold=True))
         painter.drawText(
-            QRectF(0, 8, self.width(), 28), Qt.AlignmentFlag.AlignCenter, text
+            QRectF(strip * 0.3, 0, self.width() / 2, strip),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            f"{display.note.freq_hz:.0f}Hz",
         )
 
-    def _draw_note_bar(self, painter: QPainter, display: TunerReading | None, ghost: bool) -> None:
-        bar_h = self._note_bar_height()
-        rect = QRectF(0, self.height() - bar_h, self.width(), bar_h)
+    def _draw_note_badge(self, painter: QPainter, display: TunerReading | None, ghost: bool) -> None:
+        rect = self._note_badge_rect()
+        radius = rect.height() * 0.22
         if display is not None and display.note is not None:
             if ghost:
                 painter.setOpacity(0.4)
-            painter.fillRect(rect, ZONE_COLORS[zone_for_cents(display.note.cents)])
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(ZONE_COLORS[zone_for_cents(display.note.cents)])
+            painter.drawRoundedRect(rect, radius, radius)
             painter.setPen(QColor("#20301a"))
-            painter.setFont(self._font(int(bar_h * 0.62), bold=True))
-            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, display.note.name)
+            painter.setFont(self._font(int(rect.height() * 0.52), bold=True))
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, display.note.label)
             painter.setOpacity(1.0)
         else:
-            painter.fillRect(rect, QColor("#333c4d"))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#333c4d"))
+            painter.drawRoundedRect(rect, radius, radius)
             painter.setPen(DIM_TEXT)
-            painter.setFont(self._font(int(bar_h * 0.18)))
+            painter.setFont(self._font(int(rect.height() * 0.4)))
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "—")
+        painter.setBrush(Qt.BrushStyle.NoBrush)
