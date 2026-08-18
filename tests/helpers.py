@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
+from tests.metrics import record
 from tests.synth import SR
 from tuner.analysis.reference import RefWindow
 from tuner.core.pitch import DEFAULT_FRAME_SIZE, DEFAULT_HOP_SIZE, detect
@@ -151,6 +152,10 @@ def assert_pipeline_agreement(
     print(f"\n{label}: {len(errors)} readings, median {median:.2f}c, "
           f"p90 {p90:.2f}c, p95 {p95:.2f}c, {octave_misses} octave misses"
           + (f" {_miss_histogram(errors)}" if octave_misses else ""))
+    record(f"agreement/{label}/median_cents", median)
+    record(f"agreement/{label}/p90_cents", p90)
+    record(f"agreement/{label}/p95_cents", p95)
+    record(f"agreement/{label}/octave_miss_rate", octave_misses / len(errors))
     if noisy:
         # Bounds sit just above the worst measured fixture, so a regression
         # shows up rather than hiding in slack. Drivers: p90 40.0

@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from tests.helpers import cents_error, track_signal
+from tests.metrics import record
 from tests.synth import SR, add_noise, glissando, glissando_freqs, sequence, tone
 from tuner.core.notes import freq_to_note, note_to_freq
 
@@ -35,6 +36,7 @@ def test_step_change_convergence(step_semitones):
     assert converged_at is not None, "never converged on the new pitch"
     latency = converged_at - change_t
     print(f"\nstep {step_semitones:+d} semitones: converged in {latency * 1000:.1f}ms")
+    record(f"response/step{step_semitones:+d}/converge_ms", latency * 1000, unit="ms")
     assert latency <= MAX_CONVERGE_S
 
 
@@ -57,6 +59,7 @@ def test_glissando_following(instrument):
         worst_lag = max(worst_lag, lag)
         assert lag <= MAX_GLISS_LAG_S, f"lag {lag * 1000:.0f}ms at {t:.3f}s"
     print(f"\nglissando ({instrument}): worst lag {worst_lag * 1000:.1f}ms")
+    record(f"response/glissando_{instrument}/lag_ms", worst_lag * 1000, unit="ms")
 
 
 D_MAJOR_ARPEGGIO = [("D", 4), ("F#", 4), ("A", 4), ("D", 5), ("F#", 5), ("A", 5), ("D", 6)]

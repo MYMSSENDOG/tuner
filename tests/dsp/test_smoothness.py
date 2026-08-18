@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from tests.helpers import cents_error, track_signal
+from tests.metrics import record
 from tests.sequence_bank import BANK_DIR, build_sequence, major_scale, twinkle
 from tests.synth import SR, tone
 from tuner.core.notes import note_to_freq
@@ -45,6 +46,8 @@ def test_jitter_on_sustained_notes():
     d = np.array(deltas)
     p50, p95 = float(np.percentile(d, 50)), float(np.percentile(d, 95))
     print(f"\njitter: n={len(d)} p50={p50:.3f}c p95={p95:.3f}c")
+    record("smoothness/jitter_p50_cents", p50)
+    record("smoothness/jitter_p95_cents", p95)
     assert p50 <= MAX_JITTER_P50
     assert p95 <= MAX_JITTER_P95
 
@@ -62,4 +65,5 @@ def test_vibrato_amplitude_preserved():
     peak_to_peak = np.percentile(cents, 98) - np.percentile(cents, 2)
     ratio = peak_to_peak / 40.0
     print(f"\nvibrato ratio: {ratio:.2f}")
+    record("smoothness/vibrato_ratio", ratio, better="higher")
     assert ratio >= MIN_VIBRATO_RATIO

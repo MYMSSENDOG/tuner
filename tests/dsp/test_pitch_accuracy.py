@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from tests.helpers import cents_error, detect_median_hz
+from tests.metrics import record
 from tests.synth import tone
 from tuner.core.notes import note_to_freq
 
@@ -41,6 +42,7 @@ def test_chromatic_scale_accuracy(instrument, a4_hz):
             f"{instrument} @ {freq:.2f}Hz (A4={a4_hz}): error {error:+.2f} cents"
         )
     print(f"\n{instrument} A4={a4_hz}: worst error {worst:.3f} cents")
+    record(f"accuracy/{instrument}_a4{a4_hz:g}/worst_cents", worst)
 
 
 def test_vibrato_tracks_center():

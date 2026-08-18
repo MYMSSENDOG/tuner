@@ -16,6 +16,7 @@ import time
 import pytest
 
 from tests.helpers import track_signal
+from tests.metrics import record
 from tests.synth import SR, tone
 from tuner.analysis.reference import annotate
 
@@ -38,10 +39,12 @@ def test_realtime_pipeline_keeps_up():
     1x realtime — at 1x the display starts lagging the sound."""
     factor = _realtime_factor(lambda s: track_signal(s, SR))
     print(f"\npipeline: {factor:.3f}x realtime (local baseline 0.14)")
+    record("perf/pipeline_realtime_factor", factor)
     assert factor < 1.0
 
 
 def test_annotator_stays_practical():
     factor = _realtime_factor(lambda s: annotate(s, SR))
     print(f"\nannotator: {factor:.3f}x realtime (local baseline 0.67)")
+    record("perf/annotator_realtime_factor", factor)
     assert factor < 5.0

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.metrics import record
 from tuner.tools.trace import (
     BRIEF_FRAMES,
     TraceFrame,
@@ -93,6 +94,7 @@ def test_no_name_flashes_briefly(filename):
         pytest.skip(f"{filename} not present")
     flashes = brief_flashes(displayed_labels(path))
     print(f"\n{filename}: {flashes} runs shorter than {BRIEF_FRAMES} frames")
+    record(f"display/{filename}/brief_flashes", flashes)
     assert flashes <= MAX_BRIEF_FLASHES
 
 
@@ -123,6 +125,7 @@ def test_display_does_not_flicker(filename, played, allowance):
         pytest.skip(f"{filename} not present")
     segments = label_segments(displayed_labels(path))
     print(f"\n{filename}: {len(segments)} segments (played {played}) {segments[:12]}")
+    record(f"display/{filename}/segments", len(segments))
     assert len(segments) <= played + allowance, f"display flicker: {segments}"
 
 
@@ -166,6 +169,7 @@ def test_displayed_cents_stay_in_range(filename):
     assert shown, "no readings produced"
     worst = max(shown, key=lambda f: abs(f.cents))
     print(f"\n{filename}: worst {worst.label} {worst.cents:+.0f}c of {len(shown)} readings")
+    record(f"display/{filename}/worst_cents", abs(worst.cents))
     assert abs(worst.cents) <= METER_RANGE, (
         f"displayed {worst.label} {worst.cents:+.0f}c - off the meter's scale"
     )
@@ -201,6 +205,7 @@ def test_display_does_not_freeze(filename):
     frozen = longest_frozen_run(displayed_frames(path))
     print()
     print(f"{filename}: longest frozen run {frozen} frames")
+    record(f"display/{filename}/frozen_frames", frozen)
     assert frozen <= FROZEN_FRAMES_ALLOWED
 
 
