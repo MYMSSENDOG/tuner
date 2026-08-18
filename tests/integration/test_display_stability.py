@@ -9,39 +9,35 @@ tracker jump confirmation, note latch) exists to guarantee.
 
 from __future__ import annotations
 
-import itertools
 from pathlib import Path
 
 import pytest
-import soundfile as sf
 
-from tests.fakes import FakeAudioInput
-from tuner.app.engine import TunerEngine, TunerReading
-from tuner.core.notes import Note
+from tuner.tools.trace import (
+    BRIEF_FRAMES,
+    TraceFrame,
+    brief_flashes,
+    label_segments,
+    trace_file,
+)
 
 FIXTURE_DIR = Path(__file__).parent.parent / "fixtures" / "audio"
 
 
-def displayed_notes(path: Path) -> list[Note | None]:
-    """Notes the app would show, in order, for a whole recording."""
-    signal, sr = sf.read(path, always_2d=True)
-    fake = FakeAudioInput(signal.mean(axis=1), sr=sr)
-    readings: list[TunerReading] = []
-    engine = TunerEngine(fake, readings.append)
-    engine.start()
-    fake.pump()
-    engine.stop()
-    return [r.note for r in readings]
+# The tracer runs the same engine over the same blocks these tests used to
+# assemble by hand, and it defines the display metrics in one place so that
+# the dev tool (python -m tuner.tools.trace) and this suite cannot drift
+# apart — a metric measured twice is a metric nobody can trust.
+
+
+def displayed_frames(path: Path) -> list[TraceFrame]:
+    """Every frame the app would display, in order, for a whole recording."""
+    return trace_file(path).frames
 
 
 def displayed_labels(path: Path) -> list[str | None]:
     """Note labels the app would show, in order, for a whole recording."""
-    return [n.label if n is not None else None for n in displayed_notes(path)]
-
-
-def label_segments(labels: list[str | None]) -> list[str]:
-    """Consecutive runs of the same displayed name, silence removed."""
-    return [label for label, _ in itertools.groupby(l for l in labels if l is not None)]
+    return trace_file(path).labels
 
 
 # (file, notes actually played, allowed extra segments)
@@ -74,22 +70,14 @@ CASES = [
     ("oboe_scale_C4B4.aiff", 12, 4),
 ]
 
-# A name painted for fewer frames than this is not readable as a note — it is
-# a flash. Genuine alternation is far slower: the flute's boundary vibrato
-# holds each side for a median of 14 frames (81ms), because a vibrato cycle is
-# ~180ms. Detection glitches are what land under 8.
-BRIEF_FRAMES = 8  # 46ms at the default hop
+# BRIEF_FRAMES (8 frames = 46ms) lives in tuner/tools/trace.py with its
+# rationale: a name painted for fewer frames than that is not readable as a
+# note, it is a flash, and genuine alternation is far slower.
 # Measured latch-on counts are 0 everywhere except one flash each on
 # flute_vib_C6 and trumpet_vib_A4 (both attack transients), so 2 leaves every
 # fixture a frame of slack. With the latch off the interference fixture jumps
 # to 6 — see test_brief_flash_bound_is_actually_doing_something.
 MAX_BRIEF_FLASHES = 2
-
-
-def brief_flashes(labels: list[str | None], limit: int = BRIEF_FRAMES) -> int:
-    """How many displayed names lasted fewer than `limit` readings."""
-    runs = [len(list(g)) for _, g in itertools.groupby(l for l in labels if l is not None)]
-    return sum(1 for length in runs if length < limit)
 
 
 @pytest.mark.parametrize(
@@ -174,10 +162,10 @@ def test_displayed_cents_stay_in_range(filename):
     path = FIXTURE_DIR / filename
     if not path.exists():
         pytest.skip(f"{filename} not present")
-    notes = [n for n in displayed_notes(path) if n is not None]
-    assert notes, "no readings produced"
-    worst = max(notes, key=lambda n: abs(n.cents))
-    print(f"\n{filename}: worst {worst.label} {worst.cents:+.0f}c of {len(notes)} readings")
+    shown = [f for f in displayed_frames(path) if f.cents is not None]
+    assert shown, "no readings produced"
+    worst = max(shown, key=lambda f: abs(f.cents))
+    print(f"\n{filename}: worst {worst.label} {worst.cents:+.0f}c of {len(shown)} readings")
     assert abs(worst.cents) <= METER_RANGE, (
         f"displayed {worst.label} {worst.cents:+.0f}c - off the meter's scale"
     )
@@ -190,12 +178,12 @@ def test_displayed_cents_stay_in_range(filename):
 FROZEN_FRAMES_ALLOWED = 40  # ~230ms; worst measured is 16 frames / 93ms
 
 
-def longest_frozen_run(notes: list[Note | None]) -> int:
+def longest_frozen_run(frames: list[TraceFrame]) -> int:
     from tuner.core.notes import NOTE_HOLD_CENTS_CEILING
 
     longest = run = 0
-    for note in notes:
-        if note is not None and abs(note.cents) >= NOTE_HOLD_CENTS_CEILING - 0.5:
+    for frame in frames:
+        if frame.cents is not None and abs(frame.cents) >= NOTE_HOLD_CENTS_CEILING - 0.5:
             run += 1
             longest = max(longest, run)
         else:
@@ -210,7 +198,7 @@ def test_display_does_not_freeze(filename):
     path = FIXTURE_DIR / filename
     if not path.exists():
         pytest.skip(f"{filename} not present")
-    frozen = longest_frozen_run(displayed_notes(path))
+    frozen = longest_frozen_run(displayed_frames(path))
     print()
     print(f"{filename}: longest frozen run {frozen} frames")
     assert frozen <= FROZEN_FRAMES_ALLOWED
@@ -236,9 +224,9 @@ def test_freeze_bound_is_actually_doing_something(monkeypatch):
             kwargs["release_low_cents"] = float("inf")
             super().__init__(*args, **kwargs)
 
-    now = longest_frozen_run(displayed_notes(path))
+    now = longest_frozen_run(displayed_frames(path))
     monkeypatch.setattr(engine_mod, "NoteLatch", _NoRelease)
-    held = longest_frozen_run(displayed_notes(path))
+    held = longest_frozen_run(displayed_frames(path))
     print()
     print(f"cello scale longest frozen run: now {now}, without release {held}")
     assert held > FROZEN_FRAMES_ALLOWED >= now
@@ -263,9 +251,9 @@ def test_cents_ceiling_is_actually_doing_something(monkeypatch):
             kwargs["ceiling_cents"] = float("inf")
             super().__init__(*args, **kwargs)
 
-    bounded = max(abs(n.cents) for n in displayed_notes(path) if n is not None)
+    bounded = max(abs(f.cents) for f in displayed_frames(path) if f.cents is not None)
     monkeypatch.setattr(engine_mod, "NoteLatch", _NoCeiling)
-    unbounded = max(abs(n.cents) for n in displayed_notes(path) if n is not None)
+    unbounded = max(abs(f.cents) for f in displayed_frames(path) if f.cents is not None)
     print(f"\noboe scale worst cents: ceiling on {bounded:.0f}c, off {unbounded:.0f}c")
     assert bounded < MAX_DISPLAYED_CENTS <= unbounded
 
