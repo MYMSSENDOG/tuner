@@ -18,3 +18,19 @@ def qapp():
     from PySide6.QtWidgets import QApplication
 
     return QApplication.instance() or QApplication([])
+
+
+def pytest_collection_modifyitems(config, items):
+    """Timing tests measure per-call speed against a real-time budget, so on
+    an xdist worker they measure CPU contention with the other workers
+    instead — locally that turned a passing 8ms detection into 26ms.
+
+    Same convention as the e2e tests: a test whose environment cannot support
+    it skips itself and says how to get it run.
+    """
+    if getattr(config, "workerinput", None) is None:
+        return  # serial run: measure away
+    skip = pytest.mark.skip(reason="timing test — run serially: pytest -m perf -n0")
+    for item in items:
+        if "perf" in item.keywords:
+            item.add_marker(skip)

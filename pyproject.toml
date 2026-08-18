@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov>=6.0", "ruff>=0.16", "mypy>=1.14"]
+dev = ["pytest>=8.0", "pytest-cov>=6.0", "pytest-xdist>=3.8", "ruff>=0.16", "mypy>=1.14"]
 crosscheck = ["librosa>=0.11"]  # independent estimator for ground-truth validation
 
 [build-system]
@@ -23,10 +23,13 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q -m 'not crosscheck'"  # slow ground-truth audits are opt-in
+# -n auto: the suite is dominated by whole-recording integration runs, which
+# are independent — 12 workers take it from >12min to ~90s on this machine.
+addopts = "-q -m 'not crosscheck' -n auto"  # slow ground-truth audits are opt-in
 markers = [
     "e2e: needs real hardware (audio device) or a real display; skips itself when unavailable",
     "crosscheck: slow full-bank validation against an independent estimator (opt in)",
+    "perf: wall-clock timing gate; skips itself on parallel workers (pytest -m perf -n0)",
 ]
 
 [tool.ruff]

@@ -23,6 +23,7 @@ def test_detector_accuracy(detector_cls):
         assert abs(cents_error(result.freq_hz, freq)) <= 2.0
 
 
+@pytest.mark.perf
 @pytest.mark.parametrize("detector_cls", DETECTORS, ids=lambda c: c.__name__)
 def test_detector_realtime_budget(detector_cls):
     """One detection must fit well inside the detector's own hop interval."""

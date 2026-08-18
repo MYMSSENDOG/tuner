@@ -13,9 +13,15 @@ percent. Measured locally: pipeline 0.14x realtime, annotator 0.67x.
 
 import time
 
+import pytest
+
 from tests.helpers import track_signal
 from tests.synth import SR, tone
 from tuner.analysis.reference import annotate
+
+# Wall-clock measurements: meaningless when 12 xdist workers share the CPU,
+# so conftest skips them there. Run with `pytest -m perf -n0`.
+pytestmark = pytest.mark.perf
 
 CLIP_SECONDS = 2.0
 

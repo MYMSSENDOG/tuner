@@ -17,9 +17,15 @@ python -m tuner
 
 ```bash
 pytest                                    # 기본 (e2e는 하드웨어 없으면 자체 skip)
+pytest -m perf -n0                        # 타이밍 게이트 (직렬로만 유효, ~8s)
 pytest -m "not e2e and not crosscheck"    # CI와 동일: 헤드리스 스위트만
 pytest -m crosscheck                      # 느린 정답 감사 (pip install -e '.[crosscheck]')
 ```
+
+기본으로 `-n auto`(pytest-xdist) 로 병렬 실행한다 — 스위트가 녹음 전체를
+돌리는 통합 테스트 위주라 12코어에서 12분+ → ~90초. 실시간 예산을 재는
+`perf` 테스트만은 워커끼리 CPU 를 나눠 쓰면 측정이 무의미해지므로 병렬
+실행 시 **자체 skip** 하고(`tests/conftest.py`), 위 직렬 명령으로 따로 돈다.
 
 테스트 스위트는 합성 신호(정확도 ±2 cent, SNR 10dB 내성, 반응 ≤100ms,
 글리산도 추종)와 실악기 녹음(Iowa MIS 샘플을 오프라인 고정밀 주석기로

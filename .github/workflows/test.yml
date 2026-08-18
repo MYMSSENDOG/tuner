@@ -20,3 +20,5 @@ jobs:
       - run: mypy src/tuner
       # e2e needs a real audio device / display session — local-machine only
       - run: pytest -m "not e2e and not crosscheck"
+      # timing gates skip themselves on parallel workers; run them serially
+      - run: pytest -m perf -n0
