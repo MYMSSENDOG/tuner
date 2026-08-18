@@ -45,24 +45,85 @@ def label_segments(labels: list[str | None]) -> list[str]:
 
 
 # (file, notes actually played, allowed extra segments)
-# The allowance covers attack transients, where an instrument genuinely
-# sounds another pitch briefly (flute register transitions) — but it is
-# small enough that flicker regressions fail loudly.
+#
+# A segment count is a runaway cap, not a fine seal. Under the +-50 rule a
+# boundary-straddling vibrato legitimately alternates names, so on some
+# fixtures this number is identical with the latch on and off — it can still
+# catch a display that repaints wildly, but it cannot tell whether the latch
+# works. That job belongs to test_no_name_flashes_briefly below, which counts
+# only the runs too short to read.
+#
+# Allowances therefore sit a little above the measured value rather than
+# exactly on it: three of these used to pass with zero slack, so any unrelated
+# change (a detector tweak, a numpy version) broke them for no reason.
+# === driver: measured latch-on segments are 5 / 1 / 1 / 15 / 2 / 2 / 2 / 13.
 CASES = [
     ("violin_scale_G3B3.aiff", 5, 1),
     ("violin_arco_A4.aif", 1, 1),
     ("violin_arco_G3.snr20.wav", 1, 1),
-    # 14: this note vibrates across a semitone boundary (C6 +30..+70c), and
+    # 17: this note vibrates across a semitone boundary (C6 +30..+70c), and
     # the rule that the number never leaves +-50 means the name follows the
-    # pitch to whichever side it is on. Was 2 while the name was held past
-    # the boundary instead - a motionless "+50" for up to 75ms per cycle.
+    # pitch to whichever side it is on (measured 15, and 15 with the latch off
+    # too). Was 2 while the name was held past the boundary instead - a
+    # motionless "+50" for up to 75ms per cycle.
     # === driver: docs/note-latch-tuning.md "+-50 rule" - product decision.
-    ("flute_vib_C6.aif", 1, 14),
-    ("trumpet_vib_A4.aif", 1, 1),
+    ("flute_vib_C6.aif", 1, 17),
+    ("trumpet_vib_A4.aif", 1, 2),
     ("trumpet_novib_G3.bg-flute_vib_C6.snr15.wav", 1, 2),
-    ("cello_arco_A3.aif", 1, 1),
+    ("cello_arco_A3.aif", 1, 2),
     ("oboe_scale_C4B4.aiff", 12, 4),
 ]
+
+# A name painted for fewer frames than this is not readable as a note — it is
+# a flash. Genuine alternation is far slower: the flute's boundary vibrato
+# holds each side for a median of 14 frames (81ms), because a vibrato cycle is
+# ~180ms. Detection glitches are what land under 8.
+BRIEF_FRAMES = 8  # 46ms at the default hop
+# Measured latch-on counts are 0 everywhere except one flash each on
+# flute_vib_C6 and trumpet_vib_A4 (both attack transients), so 2 leaves every
+# fixture a frame of slack. With the latch off the interference fixture jumps
+# to 6 — see test_brief_flash_bound_is_actually_doing_something.
+MAX_BRIEF_FLASHES = 2
+
+
+def brief_flashes(labels: list[str | None], limit: int = BRIEF_FRAMES) -> int:
+    """How many displayed names lasted fewer than `limit` readings."""
+    runs = [len(list(g)) for _, g in itertools.groupby(l for l in labels if l is not None)]
+    return sum(1 for length in runs if length < limit)
+
+
+@pytest.mark.parametrize(
+    "filename", [c[0] for c in CASES], ids=[c[0].split(".")[0] for c in CASES]
+)
+def test_no_name_flashes_briefly(filename):
+    """The seal a segment count cannot provide: names that appear too briefly
+    to read. Alternation the +-50 rule requires is slow enough to pass; the
+    octave glitches the latch exists to absorb are not.
+    """
+    path = FIXTURE_DIR / filename
+    if not path.exists():
+        pytest.skip(f"{filename} not present")
+    flashes = brief_flashes(displayed_labels(path))
+    print(f"\n{filename}: {flashes} runs shorter than {BRIEF_FRAMES} frames")
+    assert flashes <= MAX_BRIEF_FLASHES
+
+
+def test_brief_flash_bound_is_actually_doing_something(monkeypatch):
+    """Power check: with the latch off, the interference fixture flashes names
+    it cannot read. This is where the latch's measured value actually sits —
+    on most fixtures latch on and off score the same.
+    """
+    from tuner.core import notes
+
+    path = FIXTURE_DIR / "trumpet_novib_G3.bg-flute_vib_C6.snr15.wav"
+    if not path.exists():
+        pytest.skip("fixture not present")
+
+    with_latch = brief_flashes(displayed_labels(path))
+    monkeypatch.setattr(notes, "NOTE_LATCH_ENABLED", False)
+    without_latch = brief_flashes(displayed_labels(path))
+    print(f"\ninterference brief flashes: latch on {with_latch}, off {without_latch}")
+    assert with_latch <= MAX_BRIEF_FLASHES < without_latch
 
 
 @pytest.mark.parametrize(

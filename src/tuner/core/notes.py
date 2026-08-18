@@ -15,7 +15,12 @@ A4_MIDI = 69
 # === display switch: set False for the raw nearest note every frame ===
 NOTE_LATCH_ENABLED = True
 
-NOTE_DWELL_FRAMES = 12  # ~70ms at the default hop; measured against vibrato
+# How long an octave-scale departure must persist before the name follows it.
+# ~70ms at the default hop. Measured against detection glitches, not vibrato:
+# the release window handles everything the meter can express, so this only
+# ever sees glitch distances. Sweeping it over the fixture suite, 1 frame
+# costs 11 segments (57 -> 68) and 40 buys back one (56), so 12 is the knee.
+NOTE_DWELL_FRAMES = 12
 
 # Ceiling on the deviation a *held* note may report. While holding, cents are
 # measured from the name on screen, so a pitch that moved somewhere else

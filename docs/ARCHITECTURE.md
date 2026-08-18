@@ -21,12 +21,14 @@
 │   tracker.py   시간축 표시 정책 (스무딩·이상치)       │
 │   notes.py     Hz ↔ 음이름/cent (A4 파라미터화)     │
 └─────────────────────────────────────────────────┘
-tools/   개발용 CLI (annotate, add_noise) — analysis 소비
+tools/   개발용 CLI — 아래 레이어 전부를 조립해 쓰는 최상위
 ```
 
 **의존 규칙**: 화살표는 항상 아래로만. `core`는 아무것도 import하지 않고,
-`app`은 `core`+`audio`를, `analysis`는 `core`만, `tools`는 `analysis`를 쓴다.
-순환·역류 금지가 이 코드베이스의 제1원칙.
+`app`은 `core`+`audio`를, `analysis`는 `core`만 쓴다. `tools`는 그 위에
+앉아 필요한 것을 아무거나 조립한다 — `annotate`/`build_note_bank`는
+`analysis`를, `playback`은 `audio`를, `demo`/`compare`는 `app`(창을 띄우므로)
+과 `core`를 쓴다. 순환·역류 금지가 이 코드베이스의 제1원칙.
 
 ## 데이터 흐름 (실시간)
 
