@@ -13,9 +13,19 @@ python -m tuner
 
 첫 실행 시 마이크 권한을 허용해야 한다.
 
-**Ctrl+R** — 방금 이상하게 동작했다면 누른다. 직전 10초의 오디오와 그때
-화면에 표시된 값이 `~/.tuner/reports/<시각>/` 에 저장된다. 재현·픽스처화는
-`python -m tuner.tools.promote <리포트>`.
+리포트 두 가지 (둘 다 `~/.tuner/reports/<시각>/` 에 오디오 + 그때 화면에
+표시된 값이 함께 저장된다):
+
+- **Ctrl+R** — 방금 이상했다면 누른다. **직전 10초**가 소급 저장된다.
+- **● 기록 버튼 (Ctrl+L)** — 작정하고 실험할 때. 누른 순간부터 다시 누를
+  때까지 **한 프레임도 빠짐없이** 기록된다 (최대 10분).
+
+저장된 리포트는:
+
+```bash
+python -m tuner.tools.trace <리포트>/trace.jsonl --explain  # 왜 그렇게 표시됐나
+python -m tuner.tools.promote <리포트>                      # 재현되나 / 픽스처로
+```
 
 ## 테스트
 
@@ -46,6 +56,7 @@ python -m tuner.tools.demo 오디오.wav --loop       # 파일 들으며 튜너 
 python -m tuner.tools.compare 오디오.wav --loop    # 같은 음원, 파라미터 변형 8개(4x2) 나란히 비교
 python -m tuner.tools.trace 오디오.wav              # 표시 트레이스 + 요약(세그먼트/짧은 표시)
 python -m tuner.tools.trace 오디오.wav --vs HEAD~1  # 그 리비전과 표시가 어디서 달라졌는지
+python -m tuner.tools.trace 트레이스.jsonl --explain # 검출/표시/이름이 어긋난 순간 분류
 python -m tuner.tools.scoreboard                   # 스위트가 잰 값, 런끼리 비교 (--vs/--check)
 python -m tuner.tools.promote 리포트/                # 현장 리포트: 재현 확인 후 픽스처로 승격
 python -m tuner.tools.annotate 녹음.wav -w 0.05    # 주파수 주석(.ref.json) 생성

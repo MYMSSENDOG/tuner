@@ -140,10 +140,12 @@ while True:
   파일명에 `.snr`이 들어가면 완화된 노이즈 기준으로 채점.
 - **다른 OS 오디오 백엔드가 필요해지면**: `audio/input.py`의 `AudioInput`
   Protocol을 충족하는 구현을 추가하고 `__main__.py`에서 선택.
-- **사용자가 겪은 결함을 데이터로**: 앱에서 Ctrl+R → `~/.tuner/reports/<utc>/`
-  (오디오 + 표시 트레이스 + 코드 sha). `python -m tuner.tools.promote <report>`
-  가 **재현 여부부터** 판정하고(`--name` 을 주면 픽스처로 승격 + 주석 생성),
-  개발 루프 전체는 `docs/dev-loop.md`.
+- **사용자가 겪은 결함을 데이터로**: 앱에서 Ctrl+R(직전 10초) 또는 기록
+  버튼/Ctrl+L(시작~정지 전 구간) → `~/.tuner/reports/<utc>/` (오디오 + 표시
+  트레이스 + 코드 sha). `python -m tuner.tools.promote <report>` 가 **재현
+  여부부터** 판정하고(`--name` 을 주면 픽스처로 승격 + 주석 생성),
+  `trace <report>/trace.jsonl --explain` 이 검출·표시·이름이 어긋난 순간을
+  분류한다. 개발 루프 전체는 `docs/dev-loop.md`.
 - **표시 동작을 바꿀 때**: `python -m tuner.tools.trace <audio> --vs <rev>` 로
   어느 구간이 달라졌는지 보고, `python -m tuner.tools.scoreboard --check` 로
   게이트 아래 드리프트를 확인한다.

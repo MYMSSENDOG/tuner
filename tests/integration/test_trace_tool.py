@@ -13,6 +13,8 @@ import soundfile as sf
 
 from tests.fakes import FakeAudioInput
 from tests.synth import SR, sequence, tone
+from tuner.analysis.trace import Trace, TraceFrame
+from tuner.analysis.trace import write_jsonl as write_trace
 from tuner.app.engine import TunerEngine, TunerReading
 from tuner.core.detector import YinDetector
 from tuner.core.notes import note_to_freq
@@ -123,6 +125,71 @@ def test_display_metrics_count_runs_not_frames():
     assert label_segments(labels) == ["A4", "C5", "A4"]
     assert brief_flashes(labels, limit=2) == 1  # only the single-frame C5
     assert brief_flashes(labels, limit=BRIEF_FRAMES) == 3
+
+
+def pinned_trace(raw_offset_cents: float, frames: int = 20) -> Trace:
+    """A stretch showing D3 at the bottom of the meter, with the raw pitch
+    sitting `raw_offset_cents` away from that name."""
+    d3 = note_to_freq("D", 3)
+    raw = d3 * 2 ** (raw_offset_cents / 1200.0)
+    return Trace(
+        audio="synthetic",
+        sr=SR,
+        detector="YIN (fast)",
+        a4_hz=440.0,
+        rev="test",
+        frames=[
+            TraceFrame(
+                i=i,
+                t_s=round(i * 256 / SR, 6),
+                raw_hz=round(raw, 4),
+                confidence=0.9,
+                hz=round(d3, 4),
+                label="D3",
+                cents=-50.0,
+                state="ok",
+            )
+            for i in range(frames)
+        ],
+    )
+
+
+def test_explain_separates_an_honest_edge_from_a_clamped_hold():
+    """The whole point of keeping all three numbers: -50 on screen means two
+    completely different things depending on where the detector was."""
+    from tuner.tools.trace import moments
+
+    honest = moments(pinned_trace(-49.0))
+    assert [m.kind for m in honest] == ["pinned"]
+    assert "정직" in honest[0].verdict
+
+    clamped = moments(pinned_trace(-1150.0))  # an octave-scale detection jump
+    kinds = {m.kind for m in clamped}
+    assert kinds == {"pinned", "held"}
+    pinned = next(m for m in clamped if m.kind == "pinned")
+    assert "래치" in pinned.verdict and "-1150" in pinned.raw
+
+
+def test_explain_counts_where_the_policy_intervened():
+    from tuner.tools.trace import explain
+
+    text = explain(pinned_trace(-1150.0))
+    assert "화면 이름이 검출과 다른 프레임 20" in text
+    assert "주목할 순간" in text
+
+
+def test_explain_stays_quiet_when_nothing_happened():
+    from tuner.tools.trace import explain
+
+    text = explain(trace_signal(tone(note_to_freq("A", 4), 0.6, instrument="violin"), SR))
+    assert "주목할 순간 없음" in text
+
+
+def test_cli_explains_a_saved_trace(tmp_path, capsys):
+    path = tmp_path / "held.jsonl"
+    write_trace(pinned_trace(-1150.0), path)
+    assert main([str(path), "--explain"]) == 0
+    assert "래치" in capsys.readouterr().out
 
 
 def test_cli_writes_and_diffs(tmp_path, capsys):
