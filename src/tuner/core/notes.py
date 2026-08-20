@@ -22,6 +22,20 @@ NOTE_LATCH_ENABLED = True
 # costs 11 segments (57 -> 68) and 40 buys back one (56), so 12 is the knee.
 NOTE_DWELL_FRAMES = 12
 
+# The dwell that applies just after a note attack. An attack is not a glitch
+# (the engine tells them apart by input level - app/engine.py), but the first
+# frames of one are genuinely unreliable, so the guard is shortened rather
+# than dropped: long enough to swallow a single-frame transient, short enough
+# that the meter is not still showing the previous note.
+# Sweep over the display fixtures (attack lag / interference seal):
+#   off(12f) 70ms, 2seg 0flash | 2f 12ms, 4seg 2flash | 4f 23ms, 2seg 0flash
+#   6f 35ms, 2seg 0flash | 9f 52ms, 2seg 0flash
+# 4 is where the interference seal comes back, but it leaves the flute
+# vibrato fixture at the flash limit with no slack (2 of 2), which this repo
+# does not do; 6 keeps every seal's slack and still halves the lag.
+# === driver: docs/note-latch-tuning.md "어택 dwell 스윕"
+NOTE_ATTACK_DWELL_FRAMES = 6
+
 # Ceiling on the deviation a *held* note may report. While holding, cents are
 # measured from the name on screen, so a pitch that moved somewhere else
 # entirely produced absurd readings (a two-octave leap read +2400c on the note
@@ -125,11 +139,14 @@ class NoteLatch:
     def __init__(
         self,
         dwell_frames: int = NOTE_DWELL_FRAMES,
+        attack_dwell_frames: int = NOTE_ATTACK_DWELL_FRAMES,
         ceiling_cents: float = NOTE_HOLD_CENTS_CEILING,
         release_low_cents: float = NOTE_RELEASE_LOW_CENTS,
         release_high_cents: float = NOTE_RELEASE_HIGH_CENTS,
     ):
         self._dwell = dwell_frames
+        self._attack_dwell = attack_dwell_frames
+        self._attack_frames = 0
         self._release_low = release_low_cents
         self._release_high = release_high_cents
         # independent of the window: that decides *whether* the name moves,
@@ -141,6 +158,12 @@ class NoteLatch:
     def reset(self) -> None:
         self._note = None
         self._beyond = 0
+        self._attack_frames = 0
+
+    def attack(self) -> None:
+        """A note just started: the next departure is a note change, not a
+        glitch, so it only has to survive the short dwell."""
+        self._attack_frames = self._dwell
 
     def update(self, freq_hz: float, a4_hz: float = 440.0) -> Note:
         if not NOTE_LATCH_ENABLED:
@@ -163,7 +186,9 @@ class NoteLatch:
                 self._beyond = 0
             else:
                 self._beyond += 1
-            if self._beyond < self._dwell:
+            dwell = self._attack_dwell if self._attack_frames > 0 else self._dwell
+            self._attack_frames = max(self._attack_frames - 1, 0)
+            if self._beyond < dwell:
                 # Report "off the scale", not the raw distance: while the name
                 # is held the pitch may be anywhere, and the true deviation
                 # from *that* name is not something the meter can show.

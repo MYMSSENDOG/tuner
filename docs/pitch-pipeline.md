@@ -204,6 +204,7 @@ cent     = (midi실수 − round) × 100
 | One-Euro 스무딩 | `core/tracker.py` : `SMOOTHING_ENABLED = False` |
 | 음이름 래치 | `core/notes.py` : `NOTE_LATCH_ENABLED = False` |
 | 입력 레벨 게이트 | `core/detector.py` : `INPUT_GATE_RMS = 0.0` |
+| 어택 시 래치 단축 | `app/engine.py` : `ATTACK_RELEASE_ENABLED = False` |
 
 ## 정답(ground truth)의 신뢰 구조
 

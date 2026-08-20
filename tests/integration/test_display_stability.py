@@ -129,6 +129,115 @@ def test_display_does_not_flicker(filename, played, allowance):
     assert len(segments) <= played + allowance, f"display flicker: {segments}"
 
 
+# --- attacks over a tonal hum: what a real room does to the display ---
+#
+# Field report (2026-08-20, 36s of real playing into a room mic): the noise
+# floor sat at -39dBFS, just above the -40 input gate, and it was *tonal* —
+# a ~123Hz hum the detector locked onto as B2 with confidence ~0.9. So the
+# latch always held a name, and every note attack had to wait out its dwell
+# before the display followed: detector right after a median of 20ms, display
+# after 81ms, and in between the meter showed the hum's name pinned at +-50.
+#
+# White noise does not reproduce this (the detector rejects it outright, the
+# tracker reports nothing, and the latch resets). The hum is the mechanism.
+HUM_HZ = 123.47  # B2-ish, measured off the field recording
+HUM_DBFS = -32.0  # above the gate, as measured; -45 leaves it below
+ATTACK_NOTES = (("F", 5), ("D", 5))
+
+# What the player is allowed to be shown at an attack: the right name, or an
+# admission that we do not know yet. What must never happen is a confident
+# wrong reading — a name from before the note, parked at the end of the scale.
+# === driver: the attack dwell is 6 frames, so the display can be 6 frames
+# === (35ms) behind the detector; measured worst is exactly that. The bound
+# === sits one frame above it. Before the attack dwell existed this was 70ms.
+MAX_ATTACK_LAG_MS = 41.0  # detection to display; one hop is 5.8ms
+
+
+def hum_then_notes(gap_s: float = 1.0, note_s: float = 0.8):
+    """A tonal hum running under two notes, with silence-plus-hum between."""
+    import numpy as np
+
+    from tests.synth import SR, add_noise, tone
+    from tuner.core.notes import note_to_freq
+
+    quiet = np.zeros(int(gap_s * SR))
+    notes = [tone(note_to_freq(n, o), note_s, instrument="flute") for n, o in ATTACK_NOTES]
+    body = np.concatenate([quiet, notes[0], quiet, notes[1], quiet])
+    hum = tone(HUM_HZ, len(body) / SR + 0.05, instrument="pure")[: len(body)]
+    hum = hum / np.sqrt(np.mean(hum**2)) * 10 ** (HUM_DBFS / 20)
+    return add_noise(body + hum, 30.0, seed=11), SR
+
+
+def attack_lag_ms(trace) -> float:
+    """Worst gap between the detector being right and the display agreeing."""
+    from tuner.core.notes import freq_to_note
+
+    worst = 0.0
+    for onset, (name, octave) in zip((1.0, 2.8), ATTACK_NOTES, strict=True):
+        target = f"{name}{octave}"
+        window = [f for f in trace.frames if onset <= f.t_s <= onset + 0.5]
+        detected = next(
+            (f for f in window if f.raw_hz and freq_to_note(f.raw_hz).label == target), None
+        )
+        shown = next((f for f in window if f.label == target), None)
+        assert detected and shown, f"{target}: never reached the display"
+        worst = max(worst, 1000.0 * (shown.t_s - detected.t_s))
+    return worst
+
+
+def test_attack_release_is_actually_doing_something(monkeypatch):
+    """Power check: with the attack release off, the display sits out the full
+    dwell before following a note that the detector already had."""
+    from tuner.app import engine as engine_mod
+    from tuner.tools.trace import trace_signal
+
+    signal, sr = hum_then_notes()
+    with_release = attack_lag_ms(trace_signal(signal, sr))
+    monkeypatch.setattr(engine_mod, "ATTACK_RELEASE_ENABLED", False)
+    without_release = attack_lag_ms(trace_signal(signal, sr))
+    print(f"\n어택 지연: 해제 켜짐 {with_release:.0f}ms, 꺼짐 {without_release:.0f}ms")
+    record("display/attack_lag_ms", with_release, unit="ms")
+    assert with_release <= MAX_ATTACK_LAG_MS < without_release
+
+
+def test_attack_never_shows_the_previous_name_as_a_reading():
+    """The seal on the field finding: at a note onset the meter may lag, but
+    it may not spend that lag asserting the hum's note at the meter's edge.
+    """
+    from tests.synth import SR
+    from tuner.core.notes import freq_to_note
+    from tuner.tools.trace import trace_signal
+
+    signal, sr = hum_then_notes()
+    trace = trace_signal(signal, sr)
+    onsets = [1.0, 2.8]  # gap, note, gap, note
+
+    for onset, (name, octave) in zip(onsets, ATTACK_NOTES, strict=True):
+        target = f"{name}{octave}"
+        window = [f for f in trace.frames if onset <= f.t_s <= onset + 0.5]
+        detected = next(
+            (f for f in window if f.raw_hz and freq_to_note(f.raw_hz).label == target), None
+        )
+        assert detected is not None, f"{target}: never detected"
+        wrong = [
+            f
+            for f in window
+            if f.t_s > detected.t_s + MAX_ATTACK_LAG_MS / 1000.0
+            and f.label not in (None, target)
+            and f.cents is not None
+        ]
+        print(
+            f"\n{target}: 검출 {1000 * (detected.t_s - onset):.0f}ms, "
+            f"그 뒤 {len(wrong)}프레임이 다른 이름을 표시 "
+            f"({sorted({f.label for f in wrong})})"
+        )
+        assert not wrong, (
+            f"{target} 검출 후 {MAX_ATTACK_LAG_MS:.0f}ms 넘게 "
+            f"{sorted({f.label for f in wrong})} 를 {wrong[0].cents:+.0f}c 로 표시했다 "
+            f"({len(wrong)}프레임, {SR and len(wrong) * 256 / SR * 1000:.0f}ms)"
+        )
+
+
 # Recordings whose note content changes, i.e. where the display has to cross
 # semitone boundaries for real. Scales exercise leaps the single-note
 # fixtures never reach.
