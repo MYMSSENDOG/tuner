@@ -208,6 +208,48 @@ def test_a_restart_ends_the_recording_rather_than_corrupting_it(tmp_path):
     assert meta["interrupted"] is True
 
 
+def test_a_recording_started_mid_stream_still_replays(tmp_path):
+    """The engine primes its buffer once, at start; a recording begun later
+    inherits a full one. Replaying the saved audio has to fill it from
+    scratch, so the replay lags by the priming frames — the report is still
+    reproducible and the check must say so instead of crying 'different'.
+
+    Found on a real 36s session: 84.9% of frames 'differed' while every
+    display metric (195 segments, 58 brief flashes) matched exactly.
+    """
+    capture = FieldCapture(seconds=60.0)
+    signal = two_notes()
+    fake = FakeAudioInput(signal)
+    engine = TunerEngine(fake, lambda r: None, capture=capture)
+    engine.start()
+    blocks = [signal[i : i + 256] for i in range(0, len(signal), 256)]
+    for block in blocks[:40]:  # the engine is running well before the button
+        engine._on_block(block)
+    capture.start_recording()
+    for block in blocks[40:]:
+        engine._on_block(block)
+    engine.stop()
+
+    directory = capture.save_recording(into=tmp_path)
+    captured, replayed, spans = reproduce(directory)
+    assert len(captured.frames) > len(replayed.frames)  # the priming gap
+    assert spans == [], f"a mid-stream recording must still replay: {spans[:3]}"
+
+
+def test_cold_start_frames_do_not_make_a_report_irreproducible():
+    """A replay begins with an empty smoother and an empty latch, so its first
+    readings legitimately differ from a live capture that inherited both."""
+    from tuner.tools.promote import substantive
+    from tuner.tools.trace import Divergence
+
+    warmup = Divergence(0, 9, 0.0, 0.05, [], [], 0.0)
+    tail = Divergence(999, 999, 5.8, 5.8, [], [], 0.0)
+    real = Divergence(500, 530, 2.9, 3.1, [("A4", 31)], [("C5", 31)], 100.0)
+
+    assert substantive([warmup, tail], 1000) == []
+    assert substantive([warmup, real, tail], 1000) == [real]
+
+
 def test_cancel_throws_the_session_away():
     capture = FieldCapture(seconds=10.0)
     run_engine(tone(note_to_freq("A", 4), 0.3), capture)

@@ -247,6 +247,44 @@ def _divergence(a: Trace, b: Trace, start: int, end: int) -> Divergence:
     )
 
 
+def shifted(trace: Trace, frames: int) -> Trace:
+    """The same trace with its first `frames` readings dropped."""
+    return Trace(
+        trace.audio, trace.sr, trace.detector, trace.a4_hz, trace.rev, trace.frames[frames:]
+    )
+
+
+# The engine primes its ring before it can detect anything: frame_size/hop
+# readings' worth of audio (4096/256 = 15 by default). A live capture that
+# began while the app was already running inherits a primed buffer, but
+# replaying its audio from a file has to fill one first — so the replay is
+# missing exactly those frames at the front, and a frame-aligned diff of the
+# two is comparing different instants. Every session recording and every
+# Ctrl+R ring capture starts mid-stream, so this is the normal case, not an
+# exotic one: found on a real 36s session where 84.9% of frames "differed"
+# while every display metric matched exactly.
+MAX_ALIGN_FRAMES = 64
+
+
+def best_shift(a: Trace, b: Trace, cents_tol: float = CENTS_TOL) -> int:
+    """How far into `a` the first frame of `b` belongs."""
+    best, best_score = 0, -1.0
+    for shift in range(min(MAX_ALIGN_FRAMES, max(len(a.frames) - 10, 0)) + 1):
+        pairs = list(zip(a.frames[shift:], b.frames, strict=False))
+        if len(pairs) < 10:
+            break
+        score = sum(1 for fa, fb in pairs if frames_agree(fa, fb, cents_tol)) / len(pairs)
+        if score > best_score:  # ties keep the smaller shift
+            best, best_score = shift, score
+    return best
+
+
+def aligned_diff(a: Trace, b: Trace, cents_tol: float = CENTS_TOL) -> tuple[int, list[Divergence]]:
+    """Diff two traces of the same audio, correcting for the priming gap."""
+    shift = best_shift(a, b, cents_tol)
+    return shift, diff(shifted(a, shift), b, cents_tol)
+
+
 # ------------------------------------------------------------------ reports
 
 

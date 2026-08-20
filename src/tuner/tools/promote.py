@@ -26,9 +26,16 @@ from pathlib import Path
 
 from tuner.analysis.trace import Trace, read_jsonl
 from tuner.core.detector import DETECTORS
-from tuner.tools.trace import diff, diff_report, summary, trace_file
+from tuner.tools.trace import aligned_diff, diff_report, shifted, summary, trace_file
 
 FIXTURE_DIR = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "audio"
+
+# A replay starts cold: the tracker's smoother and the latch have no history,
+# while the live capture inherited both. The first buffer's worth of readings
+# can therefore differ legitimately (measured: 10 frames on a real session),
+# as can the single frame at the tail where the two runs end. Judging
+# reproducibility on those would call every honest report irreproducible.
+DEFAULT_WARMUP_FRAMES = 16  # YIN: frame_size / hop = 4096 / 256
 AUDIO_SUFFIXES = (".wav", ".flac", ".aif", ".aiff", ".ogg")
 
 
@@ -43,6 +50,18 @@ def load_report(report: Path) -> tuple[dict, Trace, Path]:
     return meta, read_jsonl(trace), audio
 
 
+def substantive(spans: list, total_frames: int, warmup: int = DEFAULT_WARMUP_FRAMES) -> list:
+    """Divergences that are neither the cold start nor the last frame."""
+    return [s for s in spans if s.start >= warmup and s.end < total_frames - 1]
+
+
+def _warmup_frames(trace: Trace) -> int:
+    detector = _detector_named(trace.detector)
+    if detector is None:
+        return DEFAULT_WARMUP_FRAMES
+    return int(detector.frame_size // detector.hop_size)
+
+
 def _detector_named(name: str):
     """The report says which detector was live; replay with the same one."""
     for detector_cls in DETECTORS:
@@ -52,14 +71,19 @@ def _detector_named(name: str):
 
 
 def reproduce(report: Path) -> tuple[Trace, Trace, list]:
-    """Replay the report's audio through the current pipeline and compare."""
+    """Replay the report's audio through the current pipeline and compare.
+
+    The comparison corrects for the engine's priming gap (see
+    tools/trace.py aligned_diff) — a report taken mid-stream is missing no
+    audio, but its replay cannot detect anything until the ring is full.
+    """
     meta, captured, audio = load_report(report)
     replayed = trace_file(
         audio,
         detector=_detector_named(captured.detector or meta.get("detector", "")),
         a4_hz=float(captured.a4_hz or meta.get("a4_hz", 440.0)),
     )
-    return captured, replayed, diff(captured, replayed)
+    return (captured, replayed, aligned_diff(captured, replayed)[1])
 
 
 def promote(audio: Path, name: str, *, annotate: bool = True, into: Path | None = None) -> Path:
@@ -97,15 +121,27 @@ def main(argv: list[str] | None = None) -> int:
     print()
 
     _, replayed, spans = reproduce(args.report)
-    print(diff_report(captured, replayed, spans))
+    shift, _ = aligned_diff(captured, replayed)
+    if shift:
+        print(
+            f"정렬 보정 {shift}프레임 - 라이브는 버퍼가 찬 채 시작하고, "
+            "재생은 버퍼를 채우면서 시작한다"
+        )
+    print(diff_report(shifted(captured, shift), replayed, spans))
     print()
-    if spans:
+    real = substantive(spans, len(replayed.frames), _warmup_frames(captured))
+    if real:
         print(
             "현장과 재생이 다르다 — 타이밍·장치·블록 크기에 의존하는 현상일 수 있다.\n"
             "픽스처로 만들어도 그대로 재현되지 않는다는 뜻이니, 리포트 자체를 증거로 남길 것."
         )
+    elif spans:
+        print(
+            "재현된다 - 다른 곳은 시작 몇 프레임(재생은 스무더·래치가 빈 채 출발한다)과 "
+            "맨 끝 프레임뿐이다. 픽스처가 이 현상을 붙든다."
+        )
     else:
-        print("현장 표시와 오프라인 재생이 프레임 단위로 같다 — 픽스처가 이 현상을 붙든다.")
+        print("현장 표시와 오프라인 재생이 프레임 단위로 같다 - 픽스처가 이 현상을 붙든다.")
 
     if not args.name:
         print("\n(--name <이름> 을 주면 tests/fixtures/audio/ 로 승격한다)")
