@@ -74,6 +74,14 @@ class MeterWidget(QWidget):
         radius = min(w * 0.46, h * 0.82)
         return pivot, radius
 
+    # Floor on the strip that holds the readout and the badge. It used to be
+    # 46px, which is fine in a tall window and ruinous in a short one: at the
+    # compact size the meter is ~110px tall, so a fixed 46 took 42% of it and
+    # left the dial 64px. The dial is then limited by height (radius =
+    # min(w*0.46, h*0.82) = 52 where the width offered 128), which is what
+    # made the window look empty either side of it.
+    MIN_TOP_STRIP = 28
+
     def _top_strip_height(self) -> int:
         """Band above the dial holding the frequency readout and note badge.
 
@@ -82,7 +90,7 @@ class MeterWidget(QWidget):
         were dead space — the note now lives there instead of in a bar below,
         which is what makes the window short.
         """
-        return max(46, int(self.height() * 0.22))
+        return max(self.MIN_TOP_STRIP, int(self.height() * 0.22))
 
     def _note_badge_rect(self) -> QRectF:
         strip = self._top_strip_height()
