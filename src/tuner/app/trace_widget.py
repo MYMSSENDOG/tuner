@@ -38,7 +38,10 @@ class PitchTraceWidget(QWidget):
         super().__init__(parent)
         # (cents, note_label); a single (None, None) entry marks silence
         self._points: deque[tuple[float | None, str | None]] = deque(maxlen=MAX_POINTS)
-        self.setFixedHeight(90)
+        # a strip, not a chart: it may shrink with the window, but never
+        # grows past the height where its labels stop being readable
+        self.setMinimumHeight(24)
+        self.setMaximumHeight(90)
 
     def add_reading(self, reading: TunerReading) -> None:
         if reading.state is State.OK and reading.note is not None:

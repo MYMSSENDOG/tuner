@@ -30,7 +30,7 @@ from tuner.core.detector import DETECTORS
 # Bumped when the default window size changes: a stored geometry from the
 # tall layout would otherwise survive the update and re-stretch the window,
 # so the old key is simply left behind and the new default applies once.
-GEOMETRY_KEY = "geometry_v3"
+GEOMETRY_KEY = "geometry_v5"
 
 # One key, no menu: the moment worth reporting has already passed when the
 # player reaches for the mouse. Undiscoverable on purpose - the UI stays a
@@ -40,6 +40,11 @@ REPORT_SHORTCUT = "Ctrl+R"
 # press record, play the thing that misbehaves, press it again. Nothing is
 # dropped in between, so the whole episode is on disk in one file.
 RECORD_SHORTCUT = "Ctrl+L"
+# === UI switch: set True to put the session-record button back on the
+# === controls row. Off by default - the row is the window's width floor,
+# === and the capture layer underneath it stays live either way (Ctrl+R,
+# === FieldCapture, tools/promote). Flip this for a logging session.
+RECORD_BUTTON_ENABLED = False
 
 
 def enable_ctrl_c(window: QMainWindow) -> QTimer:
@@ -100,7 +105,8 @@ class MainWindow(QMainWindow):
         self._bridge.reading.connect(self._on_reading)
 
         controls = QHBoxLayout()
-        controls.setContentsMargins(10, 8, 10, 4)
+        controls.setContentsMargins(6, 4, 6, 2)
+        controls.setSpacing(4)
 
         controls.addWidget(QLabel("A4"))
         self._a4_spin = QSpinBox()
@@ -112,35 +118,48 @@ class MainWindow(QMainWindow):
         self._a4_spin.valueChanged.connect(lambda v: self._engine.set_a4(float(v)))
         controls.addWidget(self._a4_spin)
 
-        controls.addSpacing(12)
-        controls.addWidget(QLabel("Input"))
+        controls.addSpacing(6)
         self._audio_input = audio_input
         self._device_combo = _DeviceComboBox()
-        self._device_combo.setMinimumWidth(180)
+        self._device_combo.setToolTip("Input device")
+        # the row is the window's width floor, so nothing here reserves more
+        # than it needs; the combo elides and the tooltip carries the full name
+        self._device_combo.setMinimumWidth(56)
+        self._device_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
         self._populate_devices(audio_input.list_devices())
         self._device_combo.currentIndexChanged.connect(self._on_device_changed)
         self._device_combo.about_to_show.connect(self._refresh_device_list)
         controls.addWidget(self._device_combo, stretch=1)
 
         self._detector_combo = QComboBox()
+        self._detector_combo.setToolTip("Detection algorithm")
+        self._detector_combo.setMinimumContentsLength(3)
+        self._detector_combo.setMinimumWidth(56)
+        self._detector_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
         for detector_cls in DETECTORS:
             self._detector_combo.addItem(detector_cls.name, detector_cls)
         self._detector_combo.currentIndexChanged.connect(self._on_detector_changed)
         controls.addWidget(self._detector_combo)
 
-        self._pin_check = QCheckBox("Always on top")
+        self._pin_check = QCheckBox("Pin")
+        self._pin_check.setToolTip("Always on top")
         self._pin_check.toggled.connect(self._on_pin_toggled)
         controls.addWidget(self._pin_check)
 
         self._record_button = QPushButton(RECORD_IDLE_TEXT)
         self._record_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._record_button.clicked.connect(self.toggle_recording)
-        controls.addWidget(self._record_button)
         self._record_timer = QTimer(self)
         self._record_timer.setInterval(500)
         self._record_timer.timeout.connect(self._tick_recording)
-        self._record_shortcut = QShortcut(QKeySequence(RECORD_SHORTCUT), self)
-        self._record_shortcut.activated.connect(self.toggle_recording)
+        if RECORD_BUTTON_ENABLED:
+            controls.addWidget(self._record_button)
+            self._record_shortcut = QShortcut(QKeySequence(RECORD_SHORTCUT), self)
+            self._record_shortcut.activated.connect(self.toggle_recording)
 
         central = QWidget()
         layout = QVBoxLayout(central)
@@ -169,7 +188,7 @@ class MainWindow(QMainWindow):
         self._silent_readings = 0
         central.setStyleSheet("background-color: #3b4252; color: #c7d2e3;")
         self.setCentralWidget(central)
-        self.resize(600, 460)
+        self.resize(310, 190)
         self._restore_settings()
 
     def start(self) -> None:

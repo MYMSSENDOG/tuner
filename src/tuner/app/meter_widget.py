@@ -36,7 +36,9 @@ class MeterWidget(QWidget):
         self._reading: TunerReading | None = None
         self._last_ok: TunerReading | None = None
         self._last_ok_at = 0.0
-        self.setMinimumSize(380, 260)
+        # everything here is drawn from the pivot radius, so the dial
+        # scales; this is the size below which the tick labels collide
+        self.setMinimumSize(200, 110)
 
     def set_reading(self, reading: TunerReading) -> None:
         self._reading = reading
@@ -126,8 +128,22 @@ class MeterWidget(QWidget):
                 "NOISY",
             )
 
+    # Tick labels are drawn along the arc, so the room each one has scales
+    # with the radius. At the compact window size a label every 10 cents
+    # overlaps its neighbours into an unreadable smear, so they thin out
+    # instead: the ticks themselves stay, only the numbering drops.
+    LABEL_EVERY_10_RADIUS = 120.0
+    LABEL_EVERY_25_RADIUS = 70.0
+
+    def _label_step(self, radius: float) -> int:
+        if radius >= self.LABEL_EVERY_10_RADIUS:
+            return 10
+        return 25 if radius >= self.LABEL_EVERY_25_RADIUS else 50
+
     def _draw_scale(self, painter: QPainter, pivot: QPointF, radius: float) -> None:
-        painter.setFont(self._font(10))
+        painter.setFont(self._font(max(7, int(radius * 0.075))))
+        step = self._label_step(radius)
+        half = radius * 0.14
         for cents in range(-50, 51):
             major = cents % 10 == 0
             in_tune_region = abs(cents) <= 10
@@ -138,10 +154,10 @@ class MeterWidget(QWidget):
             painter.drawLine(
                 self._point(pivot, inner, cents), self._point(pivot, outer, cents)
             )
-            if major:
+            if major and cents % step == 0:
                 painter.setPen(IN_TUNE_TICK_COLOR if in_tune_region else LABEL_COLOR)
                 label_pos = self._point(pivot, radius * 1.16, cents)
-                rect = QRectF(label_pos.x() - 18, label_pos.y() - 9, 36, 18)
+                rect = QRectF(label_pos.x() - half, label_pos.y() - half / 2, half * 2, half)
                 painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, f"{cents:+d}".replace("+0", "0"))
 
     def _draw_needle(self, painter: QPainter, pivot: QPointF, radius: float, cents: float) -> None:
