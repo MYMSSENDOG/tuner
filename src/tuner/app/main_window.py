@@ -13,12 +13,13 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
-from tuner.app.capture import RING_SECONDS, FieldCapture
+from tuner.app.capture import MAX_SESSION_SECONDS, RING_SECONDS, FieldCapture
 from tuner.app.engine import DIGITAL_SILENCE_DBFS, TunerEngine, TunerReading
 from tuner.app.level_widget import InputLevelBar
 from tuner.app.meter_widget import MeterWidget
@@ -29,12 +30,16 @@ from tuner.core.detector import DETECTORS
 # Bumped when the default window size changes: a stored geometry from the
 # tall layout would otherwise survive the update and re-stretch the window,
 # so the old key is simply left behind and the new default applies once.
-GEOMETRY_KEY = "geometry_v2"
+GEOMETRY_KEY = "geometry_v3"
 
 # One key, no menu: the moment worth reporting has already passed when the
 # player reaches for the mouse. Undiscoverable on purpose - the UI stays a
 # meter (README documents it), and nothing about it costs anything until used.
 REPORT_SHORTCUT = "Ctrl+R"
+# Ctrl+R is for the moment already gone. This is the other half: sit down,
+# press record, play the thing that misbehaves, press it again. Nothing is
+# dropped in between, so the whole episode is on disk in one file.
+RECORD_SHORTCUT = "Ctrl+L"
 
 
 def enable_ctrl_c(window: QMainWindow) -> QTimer:
@@ -49,6 +54,10 @@ def enable_ctrl_c(window: QMainWindow) -> QTimer:
     timer.timeout.connect(lambda: None)
     timer.start(200)
     return timer
+
+
+RECORD_IDLE_TEXT = "● 기록"
+RECORD_ACTIVE_TEXT = "■ 기록 중 {}"
 
 
 class _ReadingBridge(QObject):
@@ -123,6 +132,16 @@ class MainWindow(QMainWindow):
         self._pin_check.toggled.connect(self._on_pin_toggled)
         controls.addWidget(self._pin_check)
 
+        self._record_button = QPushButton(RECORD_IDLE_TEXT)
+        self._record_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._record_button.clicked.connect(self.toggle_recording)
+        controls.addWidget(self._record_button)
+        self._record_timer = QTimer(self)
+        self._record_timer.setInterval(500)
+        self._record_timer.timeout.connect(self._tick_recording)
+        self._record_shortcut = QShortcut(QKeySequence(RECORD_SHORTCUT), self)
+        self._record_shortcut.activated.connect(self.toggle_recording)
+
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -150,13 +169,19 @@ class MainWindow(QMainWindow):
         self._silent_readings = 0
         central.setStyleSheet("background-color: #3b4252; color: #c7d2e3;")
         self.setCentralWidget(central)
-        self.resize(520, 460)
+        self.resize(600, 460)
         self._restore_settings()
 
     def start(self) -> None:
         self._engine.start(self._device_combo.currentData())
 
     def closeEvent(self, event) -> None:
+        if self._capture.recording:  # never drop what was being recorded
+            self._record_timer.stop()
+            try:
+                print(f"기록 저장됨: {self.toggle_recording()}")
+            except (RuntimeError, OSError) as error:
+                print(f"기록 저장 실패: {error}")
         self._save_settings()
         self._engine.stop()
         super().closeEvent(event)
@@ -230,6 +255,38 @@ class MainWindow(QMainWindow):
             return None
         self._flash(f"직전 {RING_SECONDS:g}초 저장됨 - {directory}")
         return directory
+
+    def toggle_recording(self) -> Path | None:
+        """The 기록 button: start keeping everything, or stop and write it."""
+        if not self._capture.recording:
+            self._capture.start_recording()
+            self._record_button.setText(RECORD_ACTIVE_TEXT.format("0:00"))
+            self._record_timer.start()
+            self._flash("기록 시작 — 다시 누르면 그 사이 전 구간이 저장된다")
+            return None
+
+        self._record_timer.stop()
+        self._record_button.setText(RECORD_IDLE_TEXT)
+        try:
+            directory = self._capture.save_recording(
+                detector=self._detector_combo.currentText(),
+                a4_hz=float(self._a4_spin.value()),
+                extra={"device": self._device_combo.currentText()},
+            )
+        except (RuntimeError, OSError) as error:
+            self._flash(f"기록 저장 실패: {error}", ok=False)
+            return None
+        note = "장치가 바뀌어 중간에 끊겼다 — " if self._capture.interrupted else ""
+        self._flash(f"{note}기록 저장됨 - {directory}")
+        return directory
+
+    def _tick_recording(self) -> None:
+        seconds = self._capture.recorded_seconds
+        self._record_button.setText(
+            RECORD_ACTIVE_TEXT.format(f"{int(seconds) // 60}:{int(seconds) % 60:02d}")
+        )
+        if seconds >= MAX_SESSION_SECONDS:  # memory cap: stop before it hurts
+            self.toggle_recording()
 
     NOTE_MS = 6000  # long enough to read a path, short enough not to nag
 

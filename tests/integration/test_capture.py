@@ -12,10 +12,11 @@ import json
 
 import numpy as np
 import pytest
+import soundfile as sf
 
 from tests.fakes import FakeAudioInput
 from tests.synth import SR, sequence, tone
-from tuner.app.capture import FieldCapture, reports_dir
+from tuner.app.capture import FieldCapture, _retimed, reports_dir
 from tuner.app.engine import TunerEngine
 from tuner.core.notes import note_to_freq
 from tuner.tools.promote import load_report, promote, reproduce
@@ -149,3 +150,70 @@ def test_engine_runs_without_a_capture():
     fake.pump()
     engine.stop()
     assert readings and engine._capture is None
+
+
+# --- session recording: the button-driven half, where nothing is dropped ---
+
+
+def test_session_keeps_everything_past_the_ring(tmp_path):
+    """The ring holds 10 seconds; a session must not be bounded by it."""
+    capture = FieldCapture(seconds=0.2)  # a deliberately tiny ring
+    signal = tone(note_to_freq("A", 4), 2.0, instrument="violin")
+    fake = FakeAudioInput(signal)
+    engine = TunerEngine(fake, lambda r: None, capture=capture)
+    engine.start()
+    capture.start_recording()
+    fake.pump()
+    engine.stop()
+
+    assert capture.recording and capture.recorded_seconds == pytest.approx(2.0, abs=0.01)
+    directory = capture.save_recording(into=tmp_path)
+    assert not capture.recording
+
+    meta, trace, audio = load_report(directory)
+    assert meta["kind"] == "session" and meta["seconds"] == pytest.approx(2.0, abs=0.01)
+    assert len(sf.read(audio)[0]) == len(signal)
+    # a session of 2s holds ~10x what the 0.2s ring could
+    assert len(trace.frames) > 300
+
+
+def test_session_starts_where_the_button_was_pressed():
+    capture = FieldCapture(seconds=10.0)
+    fake = FakeAudioInput(tone(note_to_freq("A", 4), 1.0, instrument="violin"))
+    engine = TunerEngine(fake, lambda r: None, capture=capture)
+    engine.start()
+    for i, start in enumerate(range(0, len(fake._signal), 256)):
+        if i == 100:  # press record part-way through
+            capture.start_recording()
+        engine._on_block(fake._signal[start : start + 256])
+    engine.stop()
+
+    _, _, ring_frames = capture.snapshot()
+    directory_frames = capture._session_frames
+    assert len(directory_frames) < len(ring_frames)  # only what came after
+    assert _retimed(directory_frames, capture._session_start / SR)[0].t_s < 0.02
+
+
+def test_a_restart_ends_the_recording_rather_than_corrupting_it(tmp_path):
+    """Frame times are counted from the stream's start, so a stream restart
+    (a device change) breaks the session's clock. Keep what we have, say so."""
+    capture = FieldCapture(seconds=10.0)
+    run_engine(tone(note_to_freq("A", 4), 0.3), capture)
+    capture.start_recording()
+    capture.push_block(np.zeros(256), SR)
+    capture.start(48000)  # the device changed
+
+    assert not capture.recording and capture.interrupted
+    meta, _, _ = load_report(capture.save_recording(into=tmp_path))
+    assert meta["interrupted"] is True
+
+
+def test_cancel_throws_the_session_away():
+    capture = FieldCapture(seconds=10.0)
+    run_engine(tone(note_to_freq("A", 4), 0.3), capture)
+    capture.start_recording()
+    capture.push_block(np.zeros(512), SR)
+    capture.cancel_recording()
+    assert not capture.recording and capture.recorded_seconds == 0.0
+    with pytest.raises(RuntimeError):
+        capture.save_recording()

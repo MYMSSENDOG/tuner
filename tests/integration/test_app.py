@@ -314,3 +314,46 @@ def test_report_says_so_when_there_is_nothing_to_save(make_window, tmp_path, mon
     assert window.save_report() is None
     assert "실패" in window._note.text()
     window.close()
+
+
+def test_record_button_keeps_the_whole_session(qapp, make_window, tmp_path, monkeypatch):
+    """Press, play, press: everything in between lands in one report — the
+    ring's 10 seconds are not the limit when you meant to record."""
+    from tuner.app.main_window import RECORD_IDLE_TEXT
+
+    monkeypatch.setenv("TUNER_REPORTS_DIR", str(tmp_path / "reports"))
+    fake = FakeAudioInput(tone(440.0, 0.5, instrument="violin"))
+    window = make_window(fake)
+    window.start()
+
+    window._record_button.click()
+    assert window._capture.recording
+    assert "기록 중" in window._record_button.text()
+
+    fake.pump()
+    qapp.processEvents()
+    directory = window.toggle_recording()  # the second press
+
+    assert directory is not None
+    assert window._record_button.text() == RECORD_IDLE_TEXT
+    meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
+    assert meta["kind"] == "session"
+    assert meta["seconds"] == pytest.approx(0.5, abs=0.02)
+    assert meta["frames"] > 50
+    window.close()
+
+
+def test_closing_mid_recording_saves_rather_than_drops(qapp, make_window, tmp_path, monkeypatch):
+    reports = tmp_path / "reports"
+    monkeypatch.setenv("TUNER_REPORTS_DIR", str(reports))
+    fake = FakeAudioInput(tone(440.0, 0.3, instrument="violin"))
+    window = make_window(fake)
+    window.start()
+    window.toggle_recording()
+    fake.pump()
+    qapp.processEvents()
+
+    window.close()
+    assert not window._capture.recording
+    saved = list(reports.glob("*/meta.json"))
+    assert len(saved) == 1, "a recording in progress must not vanish on close"
