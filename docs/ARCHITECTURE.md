@@ -10,10 +10,13 @@
 │   meter_model.py   미터 계산 (색상·바늘각, 무-Qt)    │
 │   engine.py        audio→core 파이프라인 조립(무-Qt) │
 │   capture.py       직전 N초 링버퍼 + 리포트 저장      │
+│   metronome.py     메트로놈 조립(무-Qt) + 클릭 시각   │
+│   metronome_widget 메트로놈 컨트롤 한 줄             │
 ├──────────────────────┬──────────────────────────┤
-│ audio/  입력 경계      │ analysis/  오프라인 분석    │
-│   input.py Protocol  │   reference.py 주석기      │
-│   sounddevice_input  │   trace.py 표시 트레이스 기록 │
+│ audio/  장치 경계      │ analysis/  오프라인 분석    │
+│   input.py  Protocol │   reference.py 주석기      │
+│   output.py Protocol │   trace.py 표시 트레이스 기록 │
+│   sounddevice_in/out │                            │
 ├──────────────────────┴──────────────────────────┤
 │ core/       순수 DSP — 상위 레이어를 모름            │
 │   pitch.py     YIN 검출 (프레임 → Hz+confidence)   │
@@ -21,6 +24,8 @@
 │   detector.py  PitchDetector 인터페이스 + 구현      │
 │   tracker.py   시간축 표시 정책 (스무딩·이상치)       │
 │   notes.py     Hz ↔ 음이름/cent (A4 파라미터화)     │
+│   metronome.py 박 위치 = 샘플 산수 (무-장치)         │
+│   interference 마이크에서 클릭을 찾아 튜너가 피한다    │
 └─────────────────────────────────────────────────┘
 tools/   개발용 CLI — 아래 레이어 전부를 조립해 쓰는 최상위
 ```
@@ -37,8 +42,14 @@ tools/   개발용 CLI — 아래 레이어 전부를 조립해 쓰는 최상위
 ## 데이터 흐름 (실시간)
 
 ```
+메트로놈:  출력 장치가 당김 → metronome.render(frames)
+        → 튜너에는 *템포만* 알린다 (clicks.set_period)
+                                          │
+                                          ▼
 마이크 → sounddevice 콜백(256샘플 블록, 오디오 스레드)
+      → interference.observe(block): 노벌티를 박 주기로 접어 위상을 찾음
       → engine: 링버퍼 축적, detector.hop_size 마다
+      → 이 구간에 그 클릭이 있었나? 있으면 검출 건너뛰고 직전 표시 유지
       → detector.detect(frame) → PitchResult(Hz, confidence)
       → tracker.update() → TrackedPitch(표시값, OK|NOISY|SILENT)
       → notes.freq_to_note(A4 기준) → TunerReading
@@ -61,6 +72,17 @@ tools/   개발용 CLI — 아래 레이어 전부를 조립해 쓰는 최상위
 - **플랫폼 분기 없음**: PortAudio(sounddevice)와 Qt가 Win/Mac 차이를 전부
   흡수. `AudioInput` Protocol은 만일의 교체 지점일 뿐, OS별 구현체를 미리
   만들지 않는다.
+- **박은 오디오 시계 위에**: 메트로놈 타이밍을 Qt 타이머에 두지 않는다.
+  출력 장치가 샘플을 당겨가고 `core/metronome.py` 가 절대 샘플 위치에서
+  렌더하므로, 박은 GUI 가 아니라 사운드카드만큼 정확하다(10분 드리프트
+  0.00ms 실측). 정답이 산수라 이 영역은 주석기 없이 봉인된다 —
+  [metronome.md](metronome.md).
+- **자기 소리는 마이크에서 찾는다**: 앱이 낸 클릭이 마이크로 돌아오는
+  문제는 `core/interference.py` 의 인터페이스 하나로 격리돼 있고, 앱이
+  쓰는 구현은 **템포만 받아 위상을 입력에서 찾는다**. 우리가 친 시각을
+  안 쓰므로 장치 지연·시계 드리프트에 조준이 빗나가지 않고, 안 들리면
+  아예 안 멈춘다(이어폰: 0% vs 8~29%). 대가는 락에 2박.
+  한계와 실측은 [metronome.md](metronome.md).
 - **주석기의 독립성**: `analysis/reference.py`는 앱 기본 경로(YIN)와 다른
   알고리즘(HPS + 배음별 연속 DTFT 최우추정)을 비인과 장구간 창으로 돌린다.
   실오디오 테스트가 자기 검증 순환이 아닌 두 독립 추정기의 교차 검증이 되는
@@ -81,6 +103,7 @@ tests/
 │                    detector 계약, 주석기 정밀도, 외부 교차검증
 ├── integration/     조립: engine 파이프라인, UI offscreen(장치 전환 포함),
 │                    실오디오 vs 주석 비교, 표시 안정성(음이름 깜빡임)
+├── integration/     (이어서) 메트로놈 조립·간섭 억제·컨트롤 줄
 ├── e2e/             실기기 전용(없으면 자체 skip): 실제 장치 열거/캡처/핫스왑,
 │                    always-on-top 실제 스태킹, 음향 루프백(스피커→마이크)
 ├── fixtures/audio/  Iowa MIS 실악기 샘플 + .ref.json + 노이즈/간섭 변형
@@ -128,6 +151,10 @@ while True:
   engine/meter)에 악보 도메인 개념을 넣지 않는다.
 - 튜너 임베드 단위는 `TunerEngine` + `MeterWidget` 조합이다. 악보 앱
   셸이 실제로 생길 때 이 조합을 위젯 하나로 추출한다 (미리 하지 않음).
+- **메트로놈은 튜너의 일부가 아니라 형제 기능이다.** 지금은 한 창을 나눠
+  쓰지만 의존은 한 방향뿐 — 튜너가 `InterferenceSource` 를 받을 뿐,
+  메트로놈을 import 하지 않는다. 악보 앱에서 둘은 따로 임베드될 것이고,
+  그때 이 경계가 이미 그어져 있어야 한다.
 - 모바일 확장 시 Python 코어는 이식 대상이다. 그때의 자산은 코드가
   아니라 **알고리즘 명세와 골든 테스트 데이터**(합성 기준, 실악기
   픽스처 + ref.json, 노트 뱅크 + 시퀀스) — 언어 무관이므로 어떤
@@ -147,7 +174,12 @@ while True:
   생성), `python -m tuner.tools.add_noise <file> --snr 20`으로 노이즈 변형.
   파일명에 `.snr`이 들어가면 완화된 노이즈 기준으로 채점.
 - **다른 OS 오디오 백엔드가 필요해지면**: `audio/input.py`의 `AudioInput`
-  Protocol을 충족하는 구현을 추가하고 `__main__.py`에서 선택.
+  (또는 `audio/output.py`의 `AudioOutput`) Protocol을 충족하는 구현을
+  추가하고 `__main__.py`에서 선택.
+- **앱이 내는 다른 소리로부터 튜너를 지켜야 하면**: `core/interference.py`의
+  `InterferenceSource`(메서드 1개)를 충족하는 구현을 만들어 엔진에 넘긴다.
+  `tests/integration/test_metronome_interference.py`의 검정력 테스트가
+  "억제가 실제로 뭔가 하고 있는지"를 자동 검증한다.
 - **사용자가 겪은 결함을 데이터로**: 앱에서 Ctrl+R(직전 10초) 또는 기록
   버튼/Ctrl+L(시작~정지 전 구간) → `~/.tuner/reports/<utc>/` (오디오 + 표시
   트레이스 + 코드 sha). `python -m tuner.tools.promote <report>` 가 **재현

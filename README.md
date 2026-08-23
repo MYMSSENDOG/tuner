@@ -2,7 +2,8 @@
 
 크로스 플랫폼(Windows/macOS) 크로마틱 튜너. 실시간 피치 검출(YIN),
 ±50 cent 아날로그 미터, A4 기준 조절(415~466Hz), 입력 장치 선택,
-always-on-top.
+always-on-top. 메트로놈이 한 줄로 함께 있고, 그 클릭이 마이크로 돌아와도
+튜너 표시를 흔들지 않는다.
 
 ## 실행
 
@@ -80,4 +81,5 @@ python tests/render_sequence.py oboe tchaik4 t.wav # 뱅크에서 시퀀스 wav 
 | 테스트 정답의 출처·신뢰 근거 확인 | [pitch-pipeline "정답의 신뢰 구조"](docs/pitch-pipeline.md) |
 | 스무딩 값의 결정 근거 확인·재튜닝 | [스무딩 튜닝 기록](docs/smoothing-tuning.md) |
 | 음이름 래치(유지·cent 상한) 값의 결정 근거 확인·재튜닝 | [음이름 래치 튜닝 기록](docs/note-latch-tuning.md) |
+| 메트로놈 타이밍·클릭 소리·간섭 억제 손보기 | [메트로놈](docs/metronome.md) |
 | 실악기 픽스처 추가 | [fixtures/audio](tests/fixtures/audio/README.md), [notes 뱅크](tests/fixtures/notes/README.md), [외부 라벨](tests/fixtures/external/README.md), [셈여림](tests/fixtures/dynamics/README.md) |
