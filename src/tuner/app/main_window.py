@@ -23,8 +23,13 @@ from tuner.app.capture import MAX_SESSION_SECONDS, RING_SECONDS, FieldCapture
 from tuner.app.engine import DIGITAL_SILENCE_DBFS, TunerEngine, TunerReading
 from tuner.app.level_widget import InputLevelBar
 from tuner.app.meter_widget import MeterWidget
+from tuner.app.metronome import MetronomeService
+from tuner.app.metronome_widget import MetronomeBar
 from tuner.app.trace_widget import PitchTraceWidget
 from tuner.audio.input import AudioInput
+from tuner.audio.output import AudioOutput
+from tuner.audio.sounddevice_output import SoundDeviceOutput
+from tuner.core.metronome import DEFAULT_BPM
 
 # Bumped when the default window size changes: a stored geometry from the
 # tall layout would otherwise survive the update and re-stretch the window,
@@ -92,15 +97,27 @@ class _DeviceComboBox(QComboBox):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, audio_input: AudioInput, settings: QSettings | None = None):
+    def __init__(
+        self,
+        audio_input: AudioInput,
+        settings: QSettings | None = None,
+        audio_output: AudioOutput | None = None,
+    ):
         super().__init__()
         self.setWindowTitle("Tuner")
         self._settings = settings if settings is not None else QSettings("tuner", "tuner")
 
         self._bridge = _ReadingBridge()
         self._capture = FieldCapture()
+        # built before the engine: the tuner has to be handed the click
+        # timeline at construction so it can look away while one passes
+        # (core/interference.py)
+        self._metronome = MetronomeService(audio_output or SoundDeviceOutput())
         self._engine = TunerEngine(
-            audio_input, self._bridge.reading.emit, capture=self._capture
+            audio_input,
+            self._bridge.reading.emit,
+            capture=self._capture,
+            interference=self._metronome.clicks,
         )
         self._report_shortcut = QShortcut(QKeySequence(REPORT_SHORTCUT), self)
         self._report_shortcut.activated.connect(self.save_report)
@@ -158,6 +175,11 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addLayout(controls)
+        # under the tuner's own controls, above the meter: the metronome is a
+        # second instrument on the same panel, not a mode of the first
+        self._metronome_bar = MetronomeBar(self._metronome)
+        self._metronome_bar.failed.connect(lambda why: self._flash(why, ok=False))
+        layout.addWidget(self._metronome_bar)
         self._no_signal = QLabel(
             "입력이 완전한 무음입니다 — 마이크 권한(시스템 설정 > 개인정보 보호 > 마이크)"
             "과 입력 장치를 확인하세요."
@@ -194,6 +216,7 @@ class MainWindow(QMainWindow):
             except (RuntimeError, OSError) as error:
                 print(f"기록 저장 실패: {error}")
         self._save_settings()
+        self._metronome_bar.stop()  # the output device outlives nothing
         self._engine.stop()
         super().closeEvent(event)
 
@@ -210,6 +233,13 @@ class MainWindow(QMainWindow):
             with QSignalBlocker(self._device_combo):  # engine isn't started yet — no restart
                 self._device_combo.setCurrentIndex(device_index)
 
+        # same shape as the A4 restore above: a settings file edited by hand
+        # or written by an older build must not take the window down with it
+        stored_bpm = s.value("bpm", DEFAULT_BPM, type=float)
+        self._metronome_bar.set_bpm(
+            stored_bpm if isinstance(stored_bpm, float) else DEFAULT_BPM
+        )
+
         self._pin_check.setChecked(bool(s.value("always_on_top", False, type=bool)))
 
         geometry = s.value(GEOMETRY_KEY)
@@ -220,6 +250,7 @@ class MainWindow(QMainWindow):
         s = self._settings
         s.setValue("a4_hz", self._a4_spin.value())
         s.setValue("device_name", self._device_combo.currentText())
+        s.setValue("bpm", self._metronome.bpm)
         s.setValue("always_on_top", self._pin_check.isChecked())
         s.setValue(GEOMETRY_KEY, self.saveGeometry())
         s.sync()
