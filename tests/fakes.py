@@ -42,6 +42,13 @@ class FakeAudioInput:
     def refresh_devices(self) -> None:
         pass  # the source cannot gain devices
 
-    def pump(self) -> None:
+    def pump(self, before_block=None) -> None:
+        """Deliver the whole signal. `before_block` is handed the sample index
+        of the block about to arrive — enough to drive a fake clock in step
+        with the audio, which is what interference suppression is judged on.
+        """
         for start in range(0, len(self._signal), self._block_size):
+            if before_block is not None:
+                before_block(start)
             self._callback(self._signal[start : start + self._block_size])
+

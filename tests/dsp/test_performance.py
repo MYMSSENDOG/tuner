@@ -48,3 +48,28 @@ def test_annotator_stays_practical():
     print(f"\nannotator: {factor:.3f}x realtime (local baseline 0.67)")
     record("perf/annotator_realtime_factor", factor)
     assert factor < 5.0
+
+
+def test_click_suppression_fits_the_audio_callback():
+    """Suppression adds an FFT to every input block — 172 of them a second,
+    on the audio thread, on top of the detector. It has to be noise in that
+    budget, not a second cost of the same order."""
+
+    from tuner.core.interference import HeardClicks
+
+    source = HeardClicks()
+    source.set_period(0.5)
+    block = tone(440.0, 1.0, instrument="violin")[:256]
+    source.observe(block, 0.0, SR)  # warm-up
+
+    rounds = 5000
+    start = time.perf_counter()
+    for i in range(rounds):
+        source.observe(block, i * 256 / SR, SR)
+    per_call = (time.perf_counter() - start) / rounds
+
+    budget = 256 / SR
+    print(f"\nclick suppression: {per_call * 1000:.3f}ms per block "
+          f"(budget {budget * 1000:.1f}ms)")
+    record("perf/click_suppression_ms", per_call * 1000.0, unit="ms")
+    assert per_call < budget / 10

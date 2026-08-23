@@ -8,6 +8,7 @@ thread.
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -16,6 +17,7 @@ import numpy as np
 
 from tuner.audio.input import AudioInput
 from tuner.core.detector import PitchDetector, YinDetector
+from tuner.core.interference import InterferenceSource
 from tuner.core.notes import Note, NoteLatch
 from tuner.core.tracker import PitchTracker, State
 
@@ -65,11 +67,17 @@ class TunerEngine:
         detector: PitchDetector | None = None,
         tracker_factory: Callable[[float], PitchTracker] | None = None,
         capture: FieldCapture | None = None,
+        interference: InterferenceSource | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ):
         self._audio = audio_input
         self._on_reading = on_reading
         # optional rolling recorder (app/capture.py); None costs nothing
         self._capture = capture
+        # optional: something that knows when the app's own sound (the
+        # metronome) was audible to the microphone (core/interference.py)
+        self._interference = interference
+        self._clock = clock
         self._a4_hz = 440.0
         self._sr = 0
         self._detector: PitchDetector = detector or YinDetector()
@@ -110,6 +118,7 @@ class TunerEngine:
         self._buffer = np.zeros(self._detector.frame_size)
         self._filled = 0
         self._pending = 0
+        self._last_reading = TunerReading(State.SILENT, None)
 
     def _track_floor(self, level_dbfs: float) -> bool:
         """Follow the quiet level; report whether this block is an attack."""
@@ -130,6 +139,10 @@ class TunerEngine:
         rms = float(np.sqrt(np.mean(block * block)))
         self._level_dbfs = 20.0 * math.log10(rms) if rms > 0.0 else DIGITAL_SILENCE_DBFS
         onset = self._track_floor(self._level_dbfs)
+        if self._interference is not None:
+            # every block, not just the ones a detection lands on: a source
+            # that finds the metronome in the input needs the whole stream
+            self._interference.observe(block, self._clock(), self._sr or 44100)
         n = len(block)
         frame_size = self._detector.frame_size
         self._buffer = np.roll(self._buffer, -n)
@@ -139,6 +152,13 @@ class TunerEngine:
         if self._filled < frame_size or self._pending < self._detector.hop_size:
             return
         self._pending = 0
+        if self._contaminated():
+            # our own metronome is in this frame. Hold the display rather than
+            # blank it: nothing about the instrument changed, we just stopped
+            # looking for a moment, and a reading that vanishes every beat is
+            # a worse lie than one that is briefly stale.
+            self._emit(self._last_reading, raw_hz=None, confidence=0.0)
+            return
         raw = self._detector.detect(self._buffer, self._sr)
         tracked = self._tracker.update(raw)
         if onset and ATTACK_RELEASE_ENABLED:
@@ -151,9 +171,32 @@ class TunerEngine:
         else:
             note = None
             self._latch.reset()
-        reading = TunerReading(
-            state=tracked.state, note=note, level_dbfs=self._level_dbfs
+        self._emit(
+            TunerReading(state=tracked.state, note=note, level_dbfs=self._level_dbfs),
+            raw_hz=raw.freq_hz,
+            confidence=raw.confidence,
         )
+
+    def _contaminated(self) -> bool:
+        """Was the app's own sound inside the span this detection looked at?
+
+        The span is 2*center_offset, not frame_size: a detector declares
+        center_offset as how far back from the frame end its reading actually
+        describes, so that is the window the pitch came from. YIN carries a
+        4096-sample buffer but reads pitch off the most recent 2048 (the rest
+        is the low-register fallback), and using the buffer instead of the
+        window doubles what a click costs - 27% of frames frozen at 120 BPM
+        against 15% (docs/metronome.md).
+        """
+        if self._interference is None:
+            return False
+        now = self._clock()
+        span = 2 * self._detector.center_offset / (self._sr or 44100)
+        return self._interference.contaminates(now - span, now)
+
+    def _emit(self, reading: TunerReading, raw_hz: float | None, confidence: float) -> None:
+        reading = TunerReading(reading.state, reading.note, self._level_dbfs)
+        self._last_reading = reading
         if self._capture is not None:
-            self._capture.push_reading(reading, raw.freq_hz, raw.confidence)
+            self._capture.push_reading(reading, raw_hz, confidence)
         self._on_reading(reading)
