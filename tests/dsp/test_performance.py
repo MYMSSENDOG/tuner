@@ -50,6 +50,29 @@ def test_annotator_stays_practical():
     assert factor < 5.0
 
 
+def test_metronome_render_fits_the_output_callback():
+    """The metronome renders inside the device's callback, so one block has
+    to be produced in far less than the block's own duration — an overrun
+    there is a dropout in the click, which is the one thing a metronome may
+    never do."""
+    from tuner.audio.sounddevice_output import BLOCK_SIZE
+    from tuner.core.metronome import Metronome
+
+    metronome = Metronome(SR, 208.0)  # fastest tempo = most clicks per block
+    metronome.render(BLOCK_SIZE)  # warm-up
+
+    rounds = 2000
+    start = time.perf_counter()
+    for _ in range(rounds):
+        metronome.render(BLOCK_SIZE)
+    per_call = (time.perf_counter() - start) / rounds
+
+    budget = BLOCK_SIZE / SR
+    print(f"\nmetronome: {per_call * 1000:.3f}ms per block (budget {budget * 1000:.1f}ms)")
+    record("perf/metronome_render_ms", per_call * 1000.0, unit="ms")
+    assert per_call < budget / 4
+
+
 def test_click_suppression_fits_the_audio_callback():
     """Suppression adds an FFT to every input block — 172 of them a second,
     on the audio thread, on top of the detector. It has to be noise in that

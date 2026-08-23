@@ -52,3 +52,36 @@ class FakeAudioInput:
                 before_block(start)
             self._callback(self._signal[start : start + self._block_size])
 
+
+class FakeAudioOutput:
+    """AudioOutput double: renders on demand instead of on a device thread,
+    so a test can advance the metronome by an exact number of samples."""
+
+    def __init__(self, sr: int = SR, latency_s: float = 0.0):
+        self._sr = sr
+        self._latency_s = latency_s
+        self._render = None
+        self.start_count = 0
+        self.stop_count = 0
+
+    @property
+    def sample_rate(self) -> int:
+        return self._sr
+
+    @property
+    def latency_s(self) -> float:
+        return self._latency_s
+
+    def start(self, render) -> int:
+        self.start_count += 1
+        self._render = render
+        return self._sr
+
+    def stop(self) -> None:
+        self.stop_count += 1
+        self._render = None
+
+    def pull(self, frames: int) -> np.ndarray:
+        """One device callback's worth of output."""
+        assert self._render is not None, "pulled from a stopped output"
+        return self._render(frames)
