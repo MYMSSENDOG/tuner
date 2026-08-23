@@ -2,7 +2,8 @@
 
 The second, independent pitch estimator (the first being YIN in pitch.py).
 Used at full precision by the offline reference annotator, and at reduced
-iteration count as a selectable real-time detector.
+iteration count as the SpectralDetector the dev tools can run instead of YIN.
+restore_weak_fundamental below is on the app's per-frame path either way.
 """
 
 from __future__ import annotations

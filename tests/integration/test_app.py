@@ -177,7 +177,6 @@ class TestSettingsPersistence:
         window = MainWindow(FakeAudioInput(devices=self.DEVICES), self.make_settings(tmp_path))
         window._a4_spin.setValue(441)
         window._device_combo.setCurrentIndex(window._device_combo.findText("Mic A"))
-        window._detector_combo.setCurrentIndex(1)
         window._pin_check.setChecked(True)
         window.close()
 
@@ -185,18 +184,16 @@ class TestSettingsPersistence:
         assert restored._a4_spin.value() == 441
         assert restored._engine.a4_hz == 441.0
         assert restored._device_combo.currentText() == "Mic A"
-        assert restored._detector_combo.currentIndex() == 1
         assert restored._pin_check.isChecked()
         assert restored.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
         restored.close()
 
     def test_restore_does_not_start_stream(self, qapp, tmp_path):
-        """Restoring device/detector must not open the audio stream early."""
+        """Restoring the stored device must not open the audio stream early."""
         from tuner.app.main_window import MainWindow
 
         first = MainWindow(FakeAudioInput(devices=self.DEVICES), self.make_settings(tmp_path))
         first._device_combo.setCurrentIndex(0)
-        first._detector_combo.setCurrentIndex(1)
         first.close()
 
         fake = FakeAudioInput(devices=self.DEVICES)
@@ -301,7 +298,7 @@ def test_report_shortcut_writes_a_replayable_report(qapp, make_window, tmp_path,
 
     meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
     assert meta["a4_hz"] == float(window._a4_spin.value())
-    assert meta["detector"] == window._detector_combo.currentText()
+    assert meta["detector"] == window._engine.detector_name
 
     captured, _, spans = reproduce(directory)
     assert captured.frames and spans == []

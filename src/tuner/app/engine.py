@@ -85,11 +85,10 @@ class TunerEngine:
     def set_a4(self, a4_hz: float) -> None:
         self._a4_hz = a4_hz
 
-    def set_detector(self, detector: PitchDetector) -> None:
-        """Swap the detection algorithm. Not safe while the stream is running
-        (the audio thread reads the buffer this replaces) — stop() first."""
-        self._detector = detector
-        self._reset_pipeline()
+    @property
+    def detector_name(self) -> str:
+        """What a field report should record as having produced its readings."""
+        return self._detector.name
 
     def start(self, device_id: int | None = None) -> None:
         self._reset_pipeline()

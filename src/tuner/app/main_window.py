@@ -25,12 +25,16 @@ from tuner.app.level_widget import InputLevelBar
 from tuner.app.meter_widget import MeterWidget
 from tuner.app.trace_widget import PitchTraceWidget
 from tuner.audio.input import AudioInput
-from tuner.core.detector import DETECTORS
 
 # Bumped when the default window size changes: a stored geometry from the
 # tall layout would otherwise survive the update and re-stretch the window,
 # so the old key is simply left behind and the new default applies once.
-GEOMETRY_KEY = "geometry_v5"
+# v6: the detector combo left the controls row, which was the window's width
+# floor - 354px measured, above the 310 this asks for, so the window had been
+# silently wider than its own default. Without it the floor is 294 and the
+# default is reachable, but only for someone who is not carrying a v5
+# geometry.
+GEOMETRY_KEY = "geometry_v6"
 
 # One key, no menu: the moment worth reporting has already passed when the
 # player reaches for the mouse. Undiscoverable on purpose - the UI stays a
@@ -133,18 +137,6 @@ class MainWindow(QMainWindow):
         self._device_combo.about_to_show.connect(self._refresh_device_list)
         controls.addWidget(self._device_combo, stretch=1)
 
-        self._detector_combo = QComboBox()
-        self._detector_combo.setToolTip("Detection algorithm")
-        self._detector_combo.setMinimumContentsLength(3)
-        self._detector_combo.setMinimumWidth(56)
-        self._detector_combo.setSizeAdjustPolicy(
-            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
-        )
-        for detector_cls in DETECTORS:
-            self._detector_combo.addItem(detector_cls.name, detector_cls)
-        self._detector_combo.currentIndexChanged.connect(self._on_detector_changed)
-        controls.addWidget(self._detector_combo)
-
         self._pin_check = QCheckBox("Pin")
         self._pin_check.setToolTip("Always on top")
         self._pin_check.toggled.connect(self._on_pin_toggled)
@@ -218,12 +210,6 @@ class MainWindow(QMainWindow):
             with QSignalBlocker(self._device_combo):  # engine isn't started yet — no restart
                 self._device_combo.setCurrentIndex(device_index)
 
-        detector_index = self._detector_combo.findText(str(s.value("detector_name", "")))
-        if detector_index >= 0:
-            with QSignalBlocker(self._detector_combo):
-                self._detector_combo.setCurrentIndex(detector_index)
-            self._engine.set_detector(self._detector_combo.currentData()())
-
         self._pin_check.setChecked(bool(s.value("always_on_top", False, type=bool)))
 
         geometry = s.value(GEOMETRY_KEY)
@@ -234,7 +220,6 @@ class MainWindow(QMainWindow):
         s = self._settings
         s.setValue("a4_hz", self._a4_spin.value())
         s.setValue("device_name", self._device_combo.currentText())
-        s.setValue("detector_name", self._detector_combo.currentText())
         s.setValue("always_on_top", self._pin_check.isChecked())
         s.setValue(GEOMETRY_KEY, self.saveGeometry())
         s.sync()
@@ -265,7 +250,7 @@ class MainWindow(QMainWindow):
         """
         try:
             directory = self._capture.save(
-                detector=self._detector_combo.currentText(),
+                detector=self._engine.detector_name,
                 a4_hz=float(self._a4_spin.value()),
                 extra={"device": self._device_combo.currentText()},
             )
@@ -288,7 +273,7 @@ class MainWindow(QMainWindow):
         self._record_button.setText(RECORD_IDLE_TEXT)
         try:
             directory = self._capture.save_recording(
-                detector=self._detector_combo.currentText(),
+                detector=self._engine.detector_name,
                 a4_hz=float(self._a4_spin.value()),
                 extra={"device": self._device_combo.currentText()},
             )
@@ -317,12 +302,6 @@ class MainWindow(QMainWindow):
         self._note.setText(text)
         self._note.show()
         QTimer.singleShot(self.NOTE_MS, self._note.hide)
-
-    def _on_detector_changed(self) -> None:
-        # the audio thread must not be mid-callback while the buffer is swapped
-        self._engine.stop()
-        self._engine.set_detector(self._detector_combo.currentData()())
-        self._engine.start(self._device_combo.currentData())
 
     def _populate_devices(self, devices) -> None:
         default_index = 0

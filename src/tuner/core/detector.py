@@ -1,6 +1,15 @@
-"""Selectable pitch-detector implementations behind one interface.
+"""Pitch-detector implementations behind one interface.
 
-The engine consumes any PitchDetector; the UI lets the user pick one.
+The app runs YinDetector, full stop — the choice was never the user's to make.
+Measured on the same signals, Spectral buys 0.005 -> 0.003 cents of precision
+(a fiftieth of what the meter can show) and pays 52 -> 104ms of response at an
+octave leap, past this project's own 100ms bar. So the engine takes a detector
+at construction and nothing in the UI changes it.
+
+The interface earns its keep elsewhere: tools/trace.py wraps whichever detector
+in a recorder to keep every raw result, tests inject fakes, and SpectralDetector
+stays reachable from `trace --detector spectral` as the second opinion when a
+display oddity might be YIN's fault.
 """
 
 from __future__ import annotations
@@ -35,7 +44,7 @@ class PitchDetector(Protocol):
 
 
 class YinDetector:
-    """Default: fastest response, proven noise robustness.
+    """The app's detector: fastest response, proven noise robustness.
 
     Two windows over the same buffer. The short one (2048 = 46ms) does the
     work and sets the response time. It cannot see below ~60Hz, though: YIN
@@ -87,8 +96,10 @@ class YinDetector:
 class SpectralDetector:
     """The reference annotator's estimator at real-time settings.
 
-    More precise on stable pitch, but needs a 4096-sample trailing window
-    (~93ms at 44.1kHz), so it reacts more slowly than YIN.
+    Not what the app runs — a dev-tools second opinion (`trace --detector
+    spectral`). More precise on stable pitch, but it needs a 4096-sample
+    trailing window and hops four times more slowly, so it reacts at 81-104ms
+    against YIN's 46-57ms (measured, step change of 1 to 12 semitones).
     """
 
     name = "Spectral (precise)"
@@ -103,4 +114,7 @@ class SpectralDetector:
         return PitchResult(freq_hz=freq, confidence=confidence)
 
 
+# Every implementation that must satisfy the contract in tests/dsp/
+# test_detector.py. Also how tools/promote.py replays a field report with the
+# detector that was actually live when it was captured.
 DETECTORS: tuple[type[PitchDetector], ...] = (YinDetector, SpectralDetector)

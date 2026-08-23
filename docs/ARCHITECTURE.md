@@ -5,7 +5,7 @@
 ```
 ┌─────────────────────────────────────────────────┐
 │ app/        UI·조립 (PySide6)                     │
-│   main_window.py   창, 컨트롤(A4/장치/detector/핀) │
+│   main_window.py   창, 컨트롤(A4/장치/핀)          │
 │   meter_widget.py  미터 렌더링 (Qt 페인팅)          │
 │   meter_model.py   미터 계산 (색상·바늘각, 무-Qt)    │
 │   engine.py        audio→core 파이프라인 조립(무-Qt) │
@@ -18,7 +18,7 @@
 │ core/       순수 DSP — 상위 레이어를 모름            │
 │   pitch.py     YIN 검출 (프레임 → Hz+confidence)   │
 │   spectral.py  HPS+DTFT 검출 (제2의 독립 추정기)    │
-│   detector.py  PitchDetector 인터페이스 + 구현 선택  │
+│   detector.py  PitchDetector 인터페이스 + 구현      │
 │   tracker.py   시간축 표시 정책 (스무딩·이상치)       │
 │   notes.py     Hz ↔ 음이름/cent (A4 파라미터화)     │
 └─────────────────────────────────────────────────┘
@@ -52,8 +52,12 @@ tools/   개발용 CLI — 아래 레이어 전부를 조립해 쓰는 최상위
   확인(옥타브 글리치 차단), 짧은 dropout hold. 민감도/안정성 트레이드오프가
   전부 순수 코드라 수치 테스트 가능.
 - **detector 인터페이스**: 각 구현이 `frame_size`/`hop_size`를 스스로 선언,
-  엔진은 그에 맞춰 검출 주기만 조절. YIN(기본, 최속 반응) / Spectral(정밀,
-  느린 반응) 을 UI에서 실행 중 교체 가능.
+  엔진은 그에 맞춰 검출 주기만 조절. **앱은 YIN 고정**이다 — Spectral 은
+  정밀도를 0.005→0.003¢ 사는 대신 옥타브 도약 반응을 52→104ms 로 팔아
+  자체 기준(100ms)을 넘고, 산 것은 미터가 표시할 수 있는 단위의 1/50 이라
+  사용자가 고를 이유가 없다. 인터페이스가 남는 이유는 교체가 아니라
+  **주입**이다: 트레이서가 검출기를 감싸 raw 결과를 기록하고, 테스트가
+  페이크를 넣고, `trace --detector spectral` 이 제2 의견을 낸다.
 - **플랫폼 분기 없음**: PortAudio(sounddevice)와 Qt가 Win/Mac 차이를 전부
   흡수. `AudioInput` Protocol은 만일의 교체 지점일 뿐, OS별 구현체를 미리
   만들지 않는다.
@@ -106,9 +110,11 @@ while True:
 
 - **루프(조립부) 자체는 단순하게** 둔다. 상태 머신·추상화를 얹지 않는다.
 - 교체·비교·모킹이 필요한 **핵심 구현체만** 인터페이스 뒤에 둔다.
-  기준선: `AudioInput`(장치↔파일↔페이크), `PitchDetector`(YIN↔Spectral)
-  — 이 둘 덕에 파일 재생 데모, 페이크 주입 테스트, 검출기 실시간
-  교체가 전부 공짜로 나왔다.
+  기준선: `AudioInput`(장치↔파일↔페이크), `PitchDetector`(YIN↔Spectral↔
+  기록 래퍼) — 이 둘 덕에 파일 재생 데모, 페이크 주입 테스트, 트레이스
+  기록이 전부 공짜로 나왔다. 단, **교체 지점이 곧 사용자 설정은 아니다**:
+  검출기 선택은 UI 에 있다가 제거됐다(위 "detector 인터페이스").
+  주입점은 남고 콤보만 사라진 것이 이 구분의 실례다.
 - **미리 만들지 않는다**: "필요할지도 모르는" 구현(OS 별 백엔드 등)은
   교체 지점(인터페이스)만 남기고 실제 필요가 생길 때 만든다.
 - 의존 방향(위 "의존 규칙")을 지켰는지가 리뷰의 첫 질문이다.
@@ -132,8 +138,10 @@ while True:
 
 - **새 검출 알고리즘**: `core/`에 구현 + `detector.py`에 `PitchDetector`
   충족 클래스 추가(`name`, `frame_size`, `hop_size`, `detect`) 후 `DETECTORS`
-  에 등록 — UI 콤보에 자동 노출. `tests/dsp/test_detector.py`가 계약
-  (정확도·실시간 예산)을 자동 검증.
+  에 등록 — `tests/dsp/test_detector.py`가 계약(정확도·실시간 예산)을 자동
+  검증하고 `trace --detector` 에 노출된다. UI 에는 **안 붙인다**: 앱이 쓸
+  검출기를 바꾸는 것은 `engine.py` 가 무엇을 생성하느냐의 문제이고,
+  그 판단을 사용자에게 넘기지 않는다.
 - **새 실오디오 테스트**: 오디오 파일을 `tests/fixtures/audio/`에 넣으면
   자동 수집. `python -m tuner.tools.annotate <file>`로 주석 생성(없으면 즉석
   생성), `python -m tuner.tools.add_noise <file> --snr 20`으로 노이즈 변형.

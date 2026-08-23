@@ -1,4 +1,9 @@
-"""Both detector implementations must satisfy the interface and base accuracy."""
+"""Both detector implementations must satisfy the interface and base accuracy.
+
+The app only ever runs YIN (core/detector.py). Spectral is kept as the dev
+tools' second opinion, and it is only worth reaching for if it still holds the
+same contract, so both stay parameterized here.
+"""
 
 import time
 
@@ -72,21 +77,15 @@ def test_engine_accepts_spectral_detector():
     assert abs(ok[-1].note.cents) <= 0.5
 
 
-def test_engine_detector_hotswap():
+def test_engine_reports_which_detector_ran():
+    """Field reports record the detector by name; it must come from the engine
+    that produced the readings, not from anything the UI happens to show."""
     from tests.fakes import FakeAudioInput
     from tuner.app.engine import TunerEngine
-    from tuner.core.tracker import State
 
-    readings = []
-    fake = FakeAudioInput(tone(440.0, 0.5, instrument="violin"))
-    engine = TunerEngine(fake, readings.append, detector=YinDetector())
-    engine.start()
-    fake.pump()
-    # contract: the stream must be stopped while the detector is swapped
-    engine.stop()
-    engine.set_detector(SpectralDetector())
-    engine.start()
-    fake.pump()
-    engine.stop()
-    ok = [r for r in readings if r.state is State.OK]
-    assert ok and ok[-1].note.label == "A4"
+    fake = FakeAudioInput(tone(440.0, 0.1, instrument="violin"))
+    assert TunerEngine(fake, lambda r: None).detector_name == YinDetector.name
+    assert (
+        TunerEngine(fake, lambda r: None, detector=SpectralDetector()).detector_name
+        == SpectralDetector.name
+    )
