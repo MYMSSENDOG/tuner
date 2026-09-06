@@ -22,10 +22,11 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QLabel, QWidget
+from PySide6.QtWidgets import QWidget
 
+from tuner.app.hover_readout import HoverReadout
 from tuner.core.detector import INPUT_GATE_RMS
 
 RANGE_DBFS = (-60.0, 0.0)
@@ -71,7 +72,7 @@ class InputLevelBar(QWidget):
         super().__init__(parent)
         self._level_dbfs = RANGE_DBFS[0]
         self._gate_dbfs = DEFAULT_GATE_DBFS
-        self._readout: QLabel | None = None
+        self._readout = HoverReadout()
         self._active = False  # hovered or being dragged
         self.setFixedHeight(BAR_H + HANDLE_OVERHANG)
         self.setMouseTracking(True)  # hover needs moves with no button held
@@ -126,33 +127,17 @@ class InputLevelBar(QWidget):
 
     def leaveEvent(self, event) -> None:
         self._active = False
-        if self._readout is not None:
-            self._readout.hide()
+        self._readout.hide()
         self.update()
 
     # --- the hover readout ---
 
     def _place_readout(self) -> None:
-        """Put the number above the tick, overlapping whatever is up there."""
-        host = self.parentWidget()
-        if host is None:
-            return
-        if self._readout is None or self._readout.parentWidget() is not host:
-            self._readout = QLabel(host)
-            self._readout.setStyleSheet(
-                "background-color: #1c222c; color: #dce6f5;"
-                " padding: 1px 4px; border: 1px solid #55627a;"
-            )
-        label = self._readout
-        label.setText(f"{self._gate_dbfs:.0f} dB")
-        label.adjustSize()
-
-        tick_x = int(fill_fraction(self._gate_dbfs) * self.width())
-        top_left = self.mapTo(host, QPoint(tick_x, 0))
-        x = min(max(top_left.x() - label.width() // 2, 0), host.width() - label.width())
-        label.move(x, max(top_left.y() - label.height() - 1, 0))
-        label.raise_()
-        label.show()
+        self._readout.show_for(
+            self,
+            f"{self._gate_dbfs:.0f} dB",
+            int(fill_fraction(self._gate_dbfs) * self.width()),
+        )
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)

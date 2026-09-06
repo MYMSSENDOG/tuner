@@ -136,9 +136,9 @@ def test_hovering_shows_the_number_over_the_meter(qapp):
     bar.resize(WIDTH, BAR_H + HANDLE_OVERHANG)
     bar.set_gate(-40.0)
 
-    assert bar._readout is None  # nothing exists until hovered
+    assert bar._readout.label is None  # nothing exists until hovered
     hover(bar)
-    readout = bar._readout
+    readout = bar._readout.label
     assert readout is not None and readout.isVisible()
     assert readout.text() == "-40 dB"
     assert readout.parentWidget() is host  # overlaid on the window, not clipped
@@ -162,9 +162,9 @@ def test_the_readout_follows_a_drag(qapp):
 
     hover(bar)
     drag_to(bar, 0)
-    assert bar._readout.text() == f"{RANGE_DBFS[0]:.0f} dB"
+    assert bar._readout.label.text() == f"{RANGE_DBFS[0]:.0f} dB"
     drag_to(bar, WIDTH - 1)
-    assert bar._readout.text() == f"{RANGE_DBFS[1]:.0f} dB"
+    assert bar._readout.label.text() == f"{RANGE_DBFS[1]:.0f} dB"
     host.close()
 
 
