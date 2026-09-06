@@ -12,13 +12,35 @@ Two ways to set the tempo, because they answer different questions:
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+import contextlib
+
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QPushButton, QWidget
+from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QHBoxLayout,
+    QInputDialog,
+    QListWidget,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from tuner.app.hover_readout import HoverReadout
 from tuner.app.metronome import MetronomeService
-from tuner.core.metronome import MAX_BPM, MAX_VOLUME, MIN_BPM, MIN_VOLUME
+from tuner.core.metronome import (
+    CLICK_SOUNDS,
+    MAX_BPM,
+    MAX_VOLUME,
+    MIN_BPM,
+    MIN_VOLUME,
+)
+
+# How long the device stays open for one audition. Long enough for the
+# longest sound (45ms) and its tail, short enough that clicking down a list
+# does not queue up a backlog of open streams.
+PREVIEW_MS = 250
 
 PLAY_TEXT = "▶"
 STOP_TEXT = "■"
@@ -40,6 +62,63 @@ def volume_from_x(x: int, width: int) -> float:
     fraction = min(1.0, max(0.0, x / max(width - 1, 1)))
     span = MAX_VOLUME - MIN_VOLUME
     return MIN_VOLUME + round(fraction * span * 20.0) / 20.0
+
+
+class SoundDialog(QDialog):
+    """The four sounds, as a list you can hear.
+
+    A list and not a cycling button because the names are worth seeing at
+    once; hearing is still what decides, so moving the selection plays the
+    sound rather than waiting for OK. Cancel puts back the one you came in
+    with — an audition must not be able to change the setting by accident.
+    """
+
+    def __init__(self, service: MetronomeService, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("메트로놈 소리")
+        self._service = service
+        self._original = service.sound
+
+        self._list = QListWidget()
+        self._list.addItems(list(CLICK_SOUNDS))
+        self._list.setCurrentRow(list(CLICK_SOUNDS).index(service.sound))
+        self._list.currentTextChanged.connect(self._audition)
+        self._list.itemDoubleClicked.connect(lambda _: self.accept())
+
+        # one timer, restarted per audition: clicking down the list must not
+        # leave a stream open per row
+        self._silence = QTimer(self)
+        self._silence.setSingleShot(True)
+        self._silence.setInterval(PREVIEW_MS)
+        self._silence.timeout.connect(self._service.end_preview)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self._list)
+        layout.addWidget(buttons)
+
+    def _audition(self, name: str) -> None:
+        # no output device is ordinary; the list still selects and OK still
+        # applies, you just do not get to hear it first
+        with contextlib.suppress(RuntimeError, OSError):
+            self._service.preview(name)
+        self._silence.start()
+
+    def done(self, result: int) -> None:
+        self._silence.stop()
+        self._service.end_preview()
+        if result != QDialog.DialogCode.Accepted:
+            self._service.set_sound(self._original)
+        super().done(result)
+
+    @property
+    def chosen(self) -> str:
+        return self._list.currentItem().text()
 
 
 class VolumeBar(QWidget):
@@ -150,6 +229,11 @@ class MetronomeBar(QWidget):
         self._volume = VolumeBar(service.volume)
         self._volume.volume_changed.connect(self._service.set_volume)
         row.addWidget(self._volume, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+        row.addSpacing(4)
+        self._sound = self._button(service.sound, self._ask_sound, width=56)
+        self._sound.setToolTip("메트로놈 소리 고르기")
+        row.addWidget(self._sound)
         row.addStretch(1)
 
         self._refresh()
@@ -165,6 +249,7 @@ class MetronomeBar(QWidget):
 
     def _refresh(self) -> None:
         self._bpm.setText(f"{self._service.bpm:g}")
+        self._sound.setText(self._service.sound)
         self._play.setText(STOP_TEXT if self._service.running else PLAY_TEXT)
 
     def _toggle(self) -> None:
@@ -191,6 +276,17 @@ class MetronomeBar(QWidget):
         )
         if accepted:
             self.set_bpm(float(value))
+
+    def _ask_sound(self) -> None:
+        dialog = SoundDialog(self._service, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._service.set_sound(dialog.chosen)
+        self._refresh()
+
+    def set_sound(self, name: str) -> None:
+        """Single path for the sound, so the button shows what will play."""
+        self._service.set_sound(name)
+        self._refresh()
 
     def set_volume(self, volume: float) -> None:
         """Single path for volume, so the bar shows what is actually playing —

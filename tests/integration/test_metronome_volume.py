@@ -22,8 +22,14 @@ from PySide6.QtGui import QEnterEvent, QMouseEvent, QPointingDevice
 from tests.fakes import FakeAudioInput, FakeAudioOutput
 from tests.synth import SR, tone
 from tuner.app.metronome import MetronomeService
-from tuner.app.metronome_widget import VolumeBar, volume_from_x
-from tuner.core.metronome import CLICK_AMPLITUDE, MAX_VOLUME, MIN_VOLUME, Metronome
+from tuner.app.metronome_widget import SoundDialog, VolumeBar, volume_from_x
+from tuner.core.metronome import (
+    CLICK_AMPLITUDE,
+    CLICK_SOUNDS,
+    MAX_VOLUME,
+    MIN_VOLUME,
+    Metronome,
+)
 
 WIDTH = 44
 
@@ -227,3 +233,112 @@ def test_a_quiet_click_stops_being_suppressed():
         assert source.inner.locked is expect_locked
         if not expect_locked:
             assert source.frozen == 0
+
+
+# --- choosing the sound --------------------------------------------------
+
+
+def test_the_sound_button_shows_what_will_play(make_window):
+    window = make_window()
+    bar = window._metronome_bar
+    assert bar._sound.text() == window._metronome.sound
+    bar.set_sound("틱")
+    assert bar._sound.text() == "틱" and window._metronome.sound == "틱"
+    window.close()
+
+
+def test_the_row_order_is_play_tempo_volume_sound(make_window):
+    """Volume stays next to the tempo, as asked; the sound button follows it."""
+    window = make_window()
+    bar = window._metronome_bar
+    row = bar.layout()
+    order = [row.itemAt(i).widget() for i in range(row.count())]
+    order = [w for w in order if w is not None]
+    assert order.index(bar._volume) == order.index(bar._up) + 1
+    assert order.index(bar._sound) == order.index(bar._volume) + 1
+    window.close()
+
+
+def test_the_dialog_lists_every_sound_and_starts_on_the_current_one(qapp):
+    from tuner.app.metronome_widget import SoundDialog
+
+    service = MetronomeService(FakeAudioOutput(sr=SR), sound="비프")
+    dialog = SoundDialog(service)
+    listed = [dialog._list.item(i).text() for i in range(dialog._list.count())]
+    assert listed == list(CLICK_SOUNDS)
+    assert dialog.chosen == "비프"
+    dialog.reject()
+
+
+def test_moving_the_selection_auditions_it(qapp):
+    """Hearing is what decides, so selection plays rather than waiting for OK."""
+    output = FakeAudioOutput(sr=SR)
+    service = MetronomeService(output, sound="클릭")
+    dialog = SoundDialog(service)
+
+    dialog._list.setCurrentRow(list(CLICK_SOUNDS).index("틱"))
+    assert service.sound == "틱"
+    assert service.previewing and output.start_count == 1
+    played = output.pull(int(SR * 0.05))
+    assert float(np.max(np.abs(played))) > 0.1  # it was actually audible
+    dialog.reject()
+
+
+def test_cancel_puts_back_the_sound_you_came_in_with(qapp):
+    """An audition must not be able to change the setting by accident."""
+    service = MetronomeService(FakeAudioOutput(sr=SR), sound="클릭")
+    dialog = SoundDialog(service)
+    dialog._list.setCurrentRow(list(CLICK_SOUNDS).index("우드블록"))
+    assert service.sound == "우드블록"
+
+    dialog.reject()
+    assert service.sound == "클릭"
+    assert not service.previewing
+
+
+def test_ok_keeps_the_audition(qapp):
+    service = MetronomeService(FakeAudioOutput(sr=SR), sound="클릭")
+    dialog = SoundDialog(service)
+    dialog._list.setCurrentRow(list(CLICK_SOUNDS).index("우드블록"))
+    dialog.accept()
+    assert service.sound == "우드블록"
+    assert not service.previewing
+
+
+def test_the_audition_releases_the_device(qapp):
+    """One stream per audition, closed when it has been heard — clicking down
+    the list must not leave a backlog of open devices."""
+    output = FakeAudioOutput(sr=SR)
+    service = MetronomeService(output, sound="클릭")
+    dialog = SoundDialog(service)
+    for name in CLICK_SOUNDS:
+        dialog._list.setCurrentRow(list(CLICK_SOUNDS).index(name))
+    dialog.reject()
+    assert output.start_count == output.stop_count
+
+
+def test_a_running_beat_keeps_the_device_through_an_audition(qapp):
+    """While the beat runs the audition *is* the next beat; the device must
+    not be torn down under it."""
+    output = FakeAudioOutput(sr=SR)
+    service = MetronomeService(output, bpm=120.0)
+    service.start()
+    dialog = SoundDialog(service)
+    dialog._list.setCurrentRow(list(CLICK_SOUNDS).index("틱"))
+
+    assert not service.previewing
+    assert output.start_count == 1 and output.stop_count == 0
+    assert len(output.pull(256)) == 256
+    dialog.accept()
+    service.stop()
+
+
+def test_the_sound_survives_a_restart(make_window):
+    window = make_window()
+    window._metronome_bar.set_sound("우드블록")
+    window.close()
+
+    restored = make_window()
+    assert restored._metronome.sound == "우드블록"
+    assert restored._metronome_bar._sound.text() == "우드블록"
+    restored.close()
