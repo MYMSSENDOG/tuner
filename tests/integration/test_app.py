@@ -151,13 +151,13 @@ class TestInputLevelIndication:
         window.close()
 
     def test_level_bar_fill_mapping(self):
-        from tuner.app.level_widget import GATE_DBFS, fill_fraction
+        from tuner.app.level_widget import DEFAULT_GATE_DBFS, fill_fraction
 
         assert fill_fraction(-60.0) == 0.0
         assert fill_fraction(0.0) == 1.0
         assert fill_fraction(-200.0) == 0.0  # clamped
-        assert abs(GATE_DBFS - (-40.0)) < 0.01  # derived from the gate constant
-        assert 0.0 < fill_fraction(GATE_DBFS) < 1.0
+        assert abs(DEFAULT_GATE_DBFS - (-40.0)) < 0.01  # derived from the detector
+        assert 0.0 < fill_fraction(DEFAULT_GATE_DBFS) < 1.0
 
 
 class TestSettingsPersistence:

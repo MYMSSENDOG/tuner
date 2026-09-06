@@ -196,6 +196,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._note)
         layout.addWidget(self._meter, stretch=1)
         self._level_bar = InputLevelBar()
+        self._level_bar.gate_changed.connect(self._engine.set_input_gate_dbfs)
+        self._level_bar.set_gate(self._engine.input_gate_dbfs)
         layout.addWidget(self._level_bar)
         self._trace = PitchTraceWidget()
         layout.addWidget(self._trace)
@@ -240,6 +242,11 @@ class MainWindow(QMainWindow):
             stored_bpm if isinstance(stored_bpm, float) else DEFAULT_BPM
         )
 
+        stored_gate = s.value("input_gate_dbfs", self._engine.input_gate_dbfs, type=float)
+        if isinstance(stored_gate, float):
+            self._engine.set_input_gate_dbfs(stored_gate)
+            self._level_bar.set_gate(stored_gate)
+
         self._pin_check.setChecked(bool(s.value("always_on_top", False, type=bool)))
 
         geometry = s.value(GEOMETRY_KEY)
@@ -251,6 +258,7 @@ class MainWindow(QMainWindow):
         s.setValue("a4_hz", self._a4_spin.value())
         s.setValue("device_name", self._device_combo.currentText())
         s.setValue("bpm", self._metronome.bpm)
+        s.setValue("input_gate_dbfs", self._engine.input_gate_dbfs)
         s.setValue("always_on_top", self._pin_check.isChecked())
         s.setValue(GEOMETRY_KEY, self.saveGeometry())
         s.sync()

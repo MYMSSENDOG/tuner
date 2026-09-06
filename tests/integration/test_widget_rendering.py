@@ -11,7 +11,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from tuner.app.engine import TunerReading
-from tuner.app.level_widget import GATE_DBFS, InputLevelBar
+from tuner.app.level_widget import DEFAULT_GATE_DBFS, InputLevelBar
 from tuner.app.meter_widget import MeterWidget
 from tuner.app.trace_widget import PitchTraceWidget
 from tuner.core.notes import freq_to_note
@@ -61,6 +61,6 @@ def test_trace_paints_gaps_and_labels(qapp):
 
 def test_level_bar_paints_around_gate(qapp):
     bar = InputLevelBar()
-    for level in (-120.0, GATE_DBFS - 5, GATE_DBFS + 5, 0.0):
+    for level in (-120.0, DEFAULT_GATE_DBFS - 5, DEFAULT_GATE_DBFS + 5, 0.0):
         bar.set_level(level)
         render(bar)
