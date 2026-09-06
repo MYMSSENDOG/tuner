@@ -11,9 +11,9 @@ second is only believable against the first:
 - `ScheduledClicks` knows because we played it. Perfect information, and it
   needs the output device's latency to be right.
 - `HeardClicks` is told the tempo and finds the phase in the microphone. That
-  is what the app runs. It costs two beats to lock, and it buys back the case
-  the scheduled one gets wrong: on headphones no click ever arrives, and it
-  freezes nothing rather than freezing 8-29% of frames for a sound that was
+  is what the app runs. It costs two beats to lock, and it buys back most of
+  the case the scheduled one gets wrong: on headphones no click ever arrives,
+  and it freezes 0-5.5% of frames rather than 8-28% for a sound that was
   never in the room.
 """
 
@@ -199,20 +199,39 @@ def test_real_instrument_under_a_metronome(fixture, bpm):
 
 
 @pytest.mark.parametrize("bpm", [60.0, 200.0])
-def test_headphones_cost_nothing(bpm):
+def test_headphones_cost_a_fraction(bpm):
     """The case the scheduled source gets wrong. The metronome is running but
-    the player wears headphones, so no click reaches the microphone: listening
-    for it freezes nothing, while trusting the schedule freezes frames for a
-    sound that was never in the room."""
+    the player wears headphones, so no click reaches the microphone: trusting
+    the schedule freezes 8-28% of frames for a sound that was never in the
+    room, while listening for it freezes a fraction of that.
+
+    Not zero, and the claim is deliberately not zero. With the tempo as the
+    only prior there is no threshold that separates "our click" from "the
+    player attacking on the beat" (core/interference.py), so an instrument
+    that happens to be rhythmic at this tempo can hold a lock on its own —
+    measured 0-5.5% across the fixtures. What the listening source guarantees
+    is that it never freezes for a click that is not arriving; what it cannot
+    guarantee is that nothing else at that tempo ever will.
+    """
     base, sr = load_fixture("cello_arco_A3.aif")
 
     listening = heard(bpm)
     run(base, sr, listening)
-    assert listening.frozen == 0
-    assert not listening.inner.locked
 
     period = 60.0 / bpm
     trusting = scheduled([k * period for k in range(int(len(base) / sr / period) + 1)])
     run(base, sr, trusting)
-    record(f"metronome/headphone_waste_{bpm:g}bpm", trusting.frozen_fraction * 100, unit="%")
+
+    record(
+        f"metronome/headphone_frozen_listening_{bpm:g}bpm",
+        listening.frozen_fraction * 100,
+        unit="%",
+    )
+    record(
+        f"metronome/headphone_frozen_scheduled_{bpm:g}bpm",
+        trusting.frozen_fraction * 100,
+        unit="%",
+    )
     assert trusting.frozen_fraction > 0.05  # the thing being avoided
+    assert listening.frozen_fraction <= 0.06
+    assert listening.frozen_fraction < trusting.frozen_fraction / 3

@@ -145,9 +145,10 @@ FOLD_HALF_LIFE_S = 3.0  # how long a beat keeps contributing to the histogram
 #
 # Chosen to catch clicks, not to reject anything: swept over the whole fixture
 # corpus (27 instrument x tempo combinations, 40/120/200 BPM), the weakest
-# audible click still stood 4.2x above the bar's mean (cello A3 at 200 BPM,
-# where the beats are close together and each carries less). 3.0 keeps a
-# margin under that.
+# audible click still stood 2.7x above the bar's mean (cello A3 at 200 BPM,
+# where the beats are close together and each carries less). 2.0 keeps a
+# margin under that, and a held note with the click turned almost off sits at
+# 1.3, so the gap is real in both directions.
 #
 # It cannot be set from the other side, and this is worth being plain about:
 # with the tempo as the only prior there is no threshold that separates "our
@@ -197,8 +198,8 @@ class HeardClicks:
         self._peak_ratio = peak_ratio
         self._period: float | None = None
         self._previous: np.ndarray | None = None
+        self._window: np.ndarray | None = None
         self._bins: np.ndarray | None = None
-        self._bin_s = 0.0
         self._observed_s = 0.0
 
     # --- what the metronome tells it (the whole of the prior) ---
@@ -227,14 +228,26 @@ class HeardClicks:
         period = self._period
         if period is None or len(block) == 0:
             return
-        spectrum = np.abs(np.fft.rfft(block))
+        # windowed, and it matters more than it looks. A block boundary falls
+        # at a different point in the waveform every time (440Hz is 100.2
+        # samples, the block is 256), so an unwindowed FFT of a perfectly
+        # steady tone changes block to block purely from leakage. That is
+        # spurious novelty spread evenly across the bar, and it drowns the
+        # thing being looked for: measured on a held violin note with clicks
+        # over it, peak/mean was 1.7 without this and 40+ with it.
+        if self._window is None or len(self._window) != len(block):
+            self._window = np.hanning(len(block))
+        spectrum = np.abs(np.fft.rfft(block * self._window))
         spectrum[: int(NOVELTY_MIN_HZ * len(block) / sr)] = 0.0
         novelty = _positive_flux(spectrum, self._previous)
         self._previous = spectrum
 
         bin_s = len(block) / sr
-        if self._bins is None or self._bin_s != bin_s:
-            self._bin_s = bin_s
+        if self._bins is None:
+            # the bar is divided once, from whatever the device's block size
+            # is. Not re-divided when a block arrives short (the last one of a
+            # stream always does), which used to throw the whole histogram
+            # away at the very moment it was most sure.
             self._bins = np.zeros(max(round(period / bin_s), 4))
             self._observed_s = 0.0
         # the flux describes the block that just ended, so bin it by where
