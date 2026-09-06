@@ -22,7 +22,16 @@ from PySide6.QtGui import QEnterEvent, QMouseEvent, QPointingDevice
 from tests.fakes import FakeAudioInput, FakeAudioOutput
 from tests.synth import SR, tone
 from tuner.app.metronome import MetronomeService
-from tuner.app.metronome_widget import SoundDialog, VolumeBar, volume_from_x
+from tuner.app.metronome_widget import (
+    VOLUME_HANDLE_D,
+    VOLUME_W,
+    MenuButton,
+    SoundDialog,
+    VolumeBar,
+    volume_from_x,
+)
+
+WIDTH = VOLUME_W
 from tuner.core.metronome import (
     CLICK_AMPLITUDE,
     CLICK_SOUNDS,
@@ -30,8 +39,6 @@ from tuner.core.metronome import (
     MIN_VOLUME,
     Metronome,
 )
-
-WIDTH = 44
 
 
 def drag_to(bar: VolumeBar, x: int) -> None:
@@ -63,13 +70,14 @@ def test_volume_from_x_spans_the_bar():
 
 
 def test_volume_from_x_is_clamped():
+    """A drag that leaves the widget still reports a usable volume."""
     assert volume_from_x(-20, WIDTH) == MIN_VOLUME
     assert volume_from_x(WIDTH * 5, WIDTH) == MAX_VOLUME
 
 
 def test_volume_from_x_snaps_to_five_percent():
-    """44 pixels cannot express more, and a readout that says 63% because of
-    one pixel is noise pretending to be a setting."""
+    """20 detents over 88px — finer than anyone chooses a metronome level, and
+    coarse enough that the handle settles."""
     values = sorted({volume_from_x(x, WIDTH) for x in range(WIDTH)})
     assert all(abs(v * 20 - round(v * 20)) < 1e-9 for v in values)
     assert len(values) <= 21
@@ -136,6 +144,15 @@ def test_dragging_reports_the_new_volume(qapp):
     assert bar.volume == MAX_VOLUME
 
 
+def test_the_handle_stays_inside_the_bar(qapp):
+    """At either end it must not look half-eaten by the edge."""
+    bar = VolumeBar(CLICK_AMPLITUDE)
+    radius = VOLUME_HANDLE_D // 2
+    for volume in (MIN_VOLUME, 0.5, MAX_VOLUME):
+        bar.set_volume(volume)
+        assert radius <= bar.handle_centre_x() <= bar.width() - radius
+
+
 def test_set_volume_does_not_echo_back(qapp):
     bar = VolumeBar(CLICK_AMPLITUDE)
     seen: list[float] = []
@@ -144,21 +161,15 @@ def test_set_volume_does_not_echo_back(qapp):
     assert bar.volume == 0.2 and seen == []
 
 
-def test_hovering_shows_a_percentage(qapp):
-    from PySide6.QtWidgets import QHBoxLayout, QWidget
-
-    host = QWidget()
-    host.resize(200, 60)
-    QHBoxLayout(host).addWidget(bar := VolumeBar(CLICK_AMPLITUDE))
-    host.show()
-
-    assert bar._readout.label is None
+def test_hovering_says_nothing(qapp):
+    """No percentage. What is being decided is not a number but whether it is
+    too loud, and the answer to that is in the room. Hovering only brightens
+    the handle, so you can see what you are about to take hold of."""
+    bar = VolumeBar(CLICK_AMPLITUDE)
     hover(bar)
-    assert bar._readout.label.text() == "50%"
-    assert bar._readout.label.parentWidget() is host
+    assert bar._active
     bar.leaveEvent(None)
-    assert not bar._readout.visible
-    host.close()
+    assert not bar._active
 
 
 @pytest.fixture
@@ -175,15 +186,16 @@ def make_window(qapp, tmp_path):
 
 
 def test_the_bar_sits_beside_the_tempo(make_window):
-    """'bpm 설정하는 부분 옆에 작게' — after the + button, and small."""
+    """'bpm 설정하는 부분 옆에' — after the + button, long enough to drag, and
+    short enough that the row's height stays the buttons' business."""
     window = make_window()
     row = window._metronome_bar.layout()
     widgets = [row.itemAt(i).widget() for i in range(row.count())]
     order = [w for w in widgets if w is not None]
     bar = window._metronome_bar._volume
     assert order.index(bar) == order.index(window._metronome_bar._up) + 1
-    assert bar.width() <= 48
-    window.close()
+    assert bar.width() == WIDTH
+    assert bar.height() <= window._metronome_bar._play.height()
 
 
 def test_dragging_reaches_the_metronome(make_window):
@@ -238,24 +250,33 @@ def test_a_quiet_click_stops_being_suppressed():
 # --- choosing the sound --------------------------------------------------
 
 
-def test_the_sound_button_shows_what_will_play(make_window):
+def test_the_sound_button_is_a_menu_not_a_label(make_window):
+    """It sits beside play at the same size, so it reads as something you
+    press. The current sound is in the tooltip, not on the face."""
     window = make_window()
     bar = window._metronome_bar
-    assert bar._sound.text() == window._metronome.sound
+    # three drawn bars, not a glyph and not a name: U+2630 is a box wherever
+    # the font lacks it, and the name would not fit beside the play button
+    assert isinstance(bar._sound, MenuButton)
+    assert bar._sound.text() == ""
+    assert bar._sound.width() == bar._play.width()
+    assert window._metronome.sound in bar._sound.toolTip()
+
     bar.set_sound("틱")
-    assert bar._sound.text() == "틱" and window._metronome.sound == "틱"
+    assert window._metronome.sound == "틱"
+    assert "틱" in bar._sound.toolTip()
     window.close()
 
 
-def test_the_row_order_is_play_tempo_volume_sound(make_window):
-    """Volume stays next to the tempo, as asked; the sound button follows it."""
+def test_the_row_order_is_play_sound_tempo_volume(make_window):
+    """The two buttons together on the left, then the tempo, then volume."""
     window = make_window()
     bar = window._metronome_bar
     row = bar.layout()
     order = [row.itemAt(i).widget() for i in range(row.count())]
     order = [w for w in order if w is not None]
+    assert order.index(bar._sound) == order.index(bar._play) + 1
     assert order.index(bar._volume) == order.index(bar._up) + 1
-    assert order.index(bar._sound) == order.index(bar._volume) + 1
     window.close()
 
 
@@ -340,5 +361,5 @@ def test_the_sound_survives_a_restart(make_window):
 
     restored = make_window()
     assert restored._metronome.sound == "우드블록"
-    assert restored._metronome_bar._sound.text() == "우드블록"
+    assert "우드블록" in restored._metronome_bar._sound.toolTip()
     restored.close()

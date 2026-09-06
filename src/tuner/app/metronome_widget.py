@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import contextlib
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtCore import QPoint, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from tuner.app.hover_readout import HoverReadout
 from tuner.app.metronome import MetronomeService
 from tuner.core.metronome import (
     CLICK_SOUNDS,
@@ -46,22 +45,62 @@ PLAY_TEXT = "▶"
 STOP_TEXT = "■"
 BPM_STEP = 1.0
 
-VOLUME_W = 44  # small, as asked: it sits beside the tempo, not beside the meter
-VOLUME_H = 10
+# The sound button's three bars, drawn rather than typed. U+2630 renders as a
+# box wherever the font lacks it, and a control that disappears on someone
+# else's machine is not worth the two lines this saves.
+MENU_LINES = 3
+MENU_LINE_W = 12
+MENU_LINE_GAP = 4
+MENU_LINE_COLOR = QColor("#c7d2e3")
+
+# Long enough to drag comfortably. The row can afford it — the window's width
+# floor is set by the controls row above (294px), and this row still comes in
+# under that with room to spare.
+# A bar with a round handle. The bar is the value at a glance; the handle is
+# what says it can be moved — a bare fill reads as a meter, which is exactly
+# how the first version of this was misread.
+VOLUME_W = 88
+# The row is 22px tall and set by the buttons, so 18 costs nothing: the track
+# keeps its 10 and the extra is the handle standing proud of it.
+VOLUME_H = 18
+VOLUME_TRACK_H = 10
+VOLUME_HANDLE_D = 14
+
 VOLUME_TRACK = QColor("#2a303c")
-VOLUME_FILL = QColor("#6b7d99")
-VOLUME_FILL_ACTIVE = QColor("#cfe2ff")
+VOLUME_TRACK_EDGE = QColor("#454f61")  # a slot, not a painted rectangle
+VOLUME_FILL = QColor("#55627a")
+VOLUME_FILL_ACTIVE = QColor("#7d90ad")
+VOLUME_HANDLE = QColor("#9aa9c2")
+VOLUME_HANDLE_ACTIVE = QColor("#cfe2ff")
+VOLUME_HANDLE_EDGE = QColor("#2a303c")
 
 
 def volume_from_x(x: int, width: int) -> float:
-    """Where a click at `x` sets the click's peak amplitude, 0..1.
+    """Where a click at `x` puts the volume, 0..1.
 
-    Snapped to 5%: 44 pixels cannot express more than that, and a readout that
-    reports 63% because of one pixel is noise pretending to be a setting.
+    Absolute, like the input gate's bar above it: the handle is visible, so
+    pressing anywhere on the track means "put it there" rather than "start
+    from wherever it was".
+
+    Snapped to 5% — 88px is 20 detents, which is finer than anyone chooses a
+    metronome level and coarse enough that the handle settles.
     """
     fraction = min(1.0, max(0.0, x / max(width - 1, 1)))
     span = MAX_VOLUME - MIN_VOLUME
     return MIN_VOLUME + round(fraction * span * 20.0) / 20.0
+
+
+class MenuButton(QPushButton):
+    """A button that says "there is a list behind me" and nothing else."""
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setPen(QPen(MENU_LINE_COLOR, 2))
+        span = (MENU_LINES - 1) * MENU_LINE_GAP
+        x, y = (self.width() - MENU_LINE_W) // 2, (self.height() - span) // 2
+        for i in range(MENU_LINES):
+            painter.drawLine(x, y + i * MENU_LINE_GAP, x + MENU_LINE_W, y + i * MENU_LINE_GAP)
 
 
 class SoundDialog(QDialog):
@@ -122,11 +161,11 @@ class SoundDialog(QDialog):
 
 
 class VolumeBar(QWidget):
-    """The metronome's loudness, as a bar you drag.
+    """The metronome's loudness, as a bar with a handle you drag.
 
-    No handle, unlike the input gate's: at 44px wide a 9px grip would be a
-    fifth of the control, and a fill already says where the value is. The
-    number appears over the window on hover, the same way (hover_readout.py).
+    No readout: what is being decided here is not a number but whether it is
+    too loud, and the answer to that is in the room. The fill says roughly
+    where it sits, which is all a volume needs to say.
     """
 
     volume_changed = Signal(float)
@@ -135,10 +174,10 @@ class VolumeBar(QWidget):
         super().__init__(parent)
         self._volume = volume
         self._active = False
-        self._readout = HoverReadout()
         self.setFixedSize(VOLUME_W, VOLUME_H)
         self.setMouseTracking(True)
-        self.setCursor(Qt.CursorShape.SizeHorCursor)
+        # the pointer stays the ordinary arrow. A resize cursor is what a
+        # window edge does, and the handle already says this can be dragged
         self.setToolTip("메트로놈 소리 크기")
 
     @property
@@ -148,8 +187,6 @@ class VolumeBar(QWidget):
     def set_volume(self, volume: float) -> None:
         """Follow a value someone else chose; does not emit."""
         self._volume = volume
-        if self._active:
-            self._place_readout()
         self.update()
 
     def _apply_x(self, x: int) -> None:
@@ -157,13 +194,7 @@ class VolumeBar(QWidget):
         if volume != self._volume:
             self._volume = volume
             self.volume_changed.emit(volume)
-        self._place_readout()
         self.update()
-
-    def _place_readout(self) -> None:
-        self._readout.show_for(
-            self, f"{self._volume * 100:.0f}%", int(self._volume * self.width())
-        )
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -175,23 +206,43 @@ class VolumeBar(QWidget):
 
     def enterEvent(self, event) -> None:
         self._active = True
-        self._place_readout()
         self.update()
 
     def leaveEvent(self, event) -> None:
         self._active = False
-        self._readout.hide()
         self.update()
+
+    def handle_centre_x(self) -> int:
+        """Where the handle sits, kept fully inside the widget so it never
+        looks half-eaten at either end."""
+        radius = VOLUME_HANDLE_D // 2
+        return min(
+            max(int(self._volume * self.width()), radius), self.width() - radius
+        )
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
-        painter.fillRect(self.rect(), VOLUME_TRACK)
-        fill = int(self._volume * self.width())
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        top = (h - VOLUME_TRACK_H) // 2
+
+        painter.fillRect(0, top, w, VOLUME_TRACK_H, VOLUME_TRACK)
+        fill = int(self._volume * w)
         if fill > 0:
             painter.fillRect(
-                0, 0, fill, self.height(),
+                0, top, fill, VOLUME_TRACK_H,
                 VOLUME_FILL_ACTIVE if self._active else VOLUME_FILL,
             )
+        painter.setPen(QPen(VOLUME_TRACK_EDGE, 1))
+        painter.drawRect(0, top, w - 1, VOLUME_TRACK_H - 1)
+
+        radius = VOLUME_HANDLE_D // 2
+        centre = self.handle_centre_x()
+        painter.setPen(QPen(VOLUME_HANDLE_EDGE, 1))
+        painter.setBrush(VOLUME_HANDLE_ACTIVE if self._active else VOLUME_HANDLE)
+        painter.drawEllipse(
+            QPoint(centre, h // 2), radius - 1, radius - 1
+        )
 
 
 class MetronomeBar(QWidget):
@@ -212,6 +263,13 @@ class MetronomeBar(QWidget):
         self._play.setToolTip("메트로놈 재생/정지")
         row.addWidget(self._play)
 
+        # same size, right beside it: two things you press, not a label
+        self._sound = MenuButton()
+        self._sound.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._sound.setFixedWidth(28)
+        self._sound.clicked.connect(self._ask_sound)
+        row.addWidget(self._sound)
+
         row.addStretch(1)
         self._down = self._button("-", lambda: self._nudge(-BPM_STEP), width=24)
         row.addWidget(self._down)
@@ -230,10 +288,6 @@ class MetronomeBar(QWidget):
         self._volume.volume_changed.connect(self._service.set_volume)
         row.addWidget(self._volume, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-        row.addSpacing(4)
-        self._sound = self._button(service.sound, self._ask_sound, width=56)
-        self._sound.setToolTip("메트로놈 소리 고르기")
-        row.addWidget(self._sound)
         row.addStretch(1)
 
         self._refresh()
@@ -249,7 +303,7 @@ class MetronomeBar(QWidget):
 
     def _refresh(self) -> None:
         self._bpm.setText(f"{self._service.bpm:g}")
-        self._sound.setText(self._service.sound)
+        self._sound.setToolTip(f"메트로놈 소리: {self._service.sound}")
         self._play.setText(STOP_TEXT if self._service.running else PLAY_TEXT)
 
     def _toggle(self) -> None:
