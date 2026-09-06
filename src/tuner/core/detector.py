@@ -27,11 +27,18 @@ from tuner.core.spectral import estimate_f0, restore_weak_fundamental
 # flips wildly between them (measured on the violin scale recording: 125
 # note changes for 5 actual notes; -40dBFS yields exactly 5, -35 starts
 # eating real notes).
+#
+# The default, not the value: this used to be a constant and the product rule
+# was that no UI would expose it. A room decides otherwise — a 36s field
+# recording (app/engine.py) had a tonal ~123Hz hum sitting just above this,
+# so the gate was open on nothing but the room. One studio-measured number
+# cannot fit every room, so it became adjustable from the level bar and this
+# is where it starts.
 INPUT_GATE_RMS = 10.0 ** (-40.0 / 20.0)
 
 
-def _gated(frame: np.ndarray) -> bool:
-    return float(np.sqrt(np.mean(frame * frame))) < INPUT_GATE_RMS
+def _gated(frame: np.ndarray, gate_rms: float) -> bool:
+    return float(np.sqrt(np.mean(frame * frame))) < gate_rms
 
 
 class PitchDetector(Protocol):
@@ -39,6 +46,10 @@ class PitchDetector(Protocol):
     frame_size: int  # samples of context each detection needs
     hop_size: int  # samples between detections; must exceed one detection's compute time
     center_offset: int  # samples back from frame end that a reading describes
+    # Read on the audio thread, written from the UI when the user drags the
+    # level bar. A float assignment is atomic under the GIL, so the worst a
+    # race can do is apply the new gate one frame late.
+    input_gate_rms: float
 
     def detect(self, frame: np.ndarray, sr: int) -> PitchResult: ...
 
@@ -62,12 +73,15 @@ class YinDetector:
     LOW_HANDOVER_HZ = 90.0
     LOW_FMIN_HZ = 38.0
 
+    def __init__(self, input_gate_rms: float = INPUT_GATE_RMS):
+        self.input_gate_rms = input_gate_rms
+
     def detect(self, frame: np.ndarray, sr: int) -> PitchResult:
         # everything except the low-register fallback looks at the recent
         # window only: level gate, pitch and the spectral cross-check must
         # all describe the same span of sound
         recent = frame[-pitch.DEFAULT_FRAME_SIZE :]
-        if _gated(recent):
+        if _gated(recent, self.input_gate_rms):
             return PitchResult(None, 0.0)
         short = pitch.detect(recent, sr)
         result, window = short, recent
@@ -107,8 +121,11 @@ class SpectralDetector:
     center_offset = 2048
     hop_size = 1024  # heavier per detection; ~23ms budget at 44.1kHz
 
+    def __init__(self, input_gate_rms: float = INPUT_GATE_RMS):
+        self.input_gate_rms = input_gate_rms
+
     def detect(self, frame: np.ndarray, sr: int) -> PitchResult:
-        if _gated(frame):
+        if _gated(frame, self.input_gate_rms):
             return PitchResult(None, 0.0)
         freq, confidence = estimate_f0(frame, sr, dtft_rounds=3)
         return PitchResult(freq_hz=freq, confidence=confidence)

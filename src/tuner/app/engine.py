@@ -98,6 +98,19 @@ class TunerEngine:
         """What a field report should record as having produced its readings."""
         return self._detector.name
 
+    @property
+    def input_gate_dbfs(self) -> float:
+        return 20.0 * math.log10(self._detector.input_gate_rms)
+
+    def set_input_gate_dbfs(self, level_dbfs: float) -> None:
+        """Below this input level the detector does not judge.
+
+        Live: written from the GUI thread while the audio thread reads it
+        (core/detector.py). No restart, because a gate the user is dragging
+        has to be heard while they drag it.
+        """
+        self._detector.input_gate_rms = 10.0 ** (level_dbfs / 20.0)
+
     def start(self, device_id: int | None = None) -> None:
         self._reset_pipeline()
         self._sr = self._audio.start(device_id, self._on_block)

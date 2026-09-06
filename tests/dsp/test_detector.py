@@ -89,3 +89,46 @@ def test_engine_reports_which_detector_ran():
         TunerEngine(fake, lambda r: None, detector=SpectralDetector()).detector_name
         == SpectralDetector.name
     )
+
+
+@pytest.mark.parametrize("detector_cls", DETECTORS, ids=lambda c: c.__name__)
+def test_the_gate_is_adjustable_and_actually_gates(detector_cls):
+    """Power check: a signal quiet enough to be refused must be judged once
+    the gate is lowered past it, and nothing else about the reading changes.
+
+    Rooms differ — the fixed -40dBFS was measured in a studio and a real one
+    put a hum just above it (app/engine.py), which is why this moved.
+    """
+    detector = detector_cls()
+    quiet = tone(440.0, 0.5, instrument="violin") * 0.004  # about -48dBFS
+    frame = quiet[: detector.frame_size]
+    assert detector.detect(frame, SR).freq_hz is None
+
+    detector.input_gate_rms = 10.0 ** (-60.0 / 20.0)
+    result = detector.detect(frame, SR)
+    assert result.freq_hz is not None
+    assert abs(cents_error(result.freq_hz, 440.0)) <= 2.0
+
+
+def test_the_engine_moves_the_gate_without_a_restart():
+    """Dragging the bar must be audible immediately; stopping the stream to
+    apply a threshold would make the control unusable."""
+    from tests.fakes import FakeAudioInput
+    from tuner.app.engine import TunerEngine
+    from tuner.core.tracker import State
+
+    readings = []
+    quiet = tone(440.0, 0.5, instrument="violin") * 0.004
+    fake = FakeAudioInput(quiet)
+    engine = TunerEngine(fake, readings.append)
+    assert abs(engine.input_gate_dbfs - (-40.0)) < 0.01
+
+    engine.start()
+    fake.pump()
+    assert not [r for r in readings if r.state is State.OK]
+
+    engine.set_input_gate_dbfs(-60.0)
+    readings.clear()
+    fake.pump()  # same stream, no restart
+    ok = [r for r in readings if r.state is State.OK]
+    assert ok and ok[-1].note.label == "A4"

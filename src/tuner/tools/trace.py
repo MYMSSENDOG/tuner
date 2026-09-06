@@ -93,6 +93,16 @@ class _Recording:
         self.center_offset: int = inner.center_offset
         self.results: list[PitchResult] = []
 
+    @property
+    def input_gate_rms(self) -> float:
+        # forwarded, not copied: the gate is live state and the wrapped
+        # detector is the one that actually applies it
+        return self._inner.input_gate_rms
+
+    @input_gate_rms.setter
+    def input_gate_rms(self, value: float) -> None:
+        self._inner.input_gate_rms = value
+
     def detect(self, frame: np.ndarray, sr: int) -> PitchResult:
         result = self._inner.detect(frame, sr)
         self.results.append(result)
