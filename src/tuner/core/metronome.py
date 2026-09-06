@@ -38,7 +38,16 @@ DEFAULT_BPM = 120.0
 CLICK_HZ = 1000.0
 CLICK_MS = 20.0
 CLICK_DECAY = 25.0  # e-folds per second of the amplitude envelope
+# Volume *is* the click's peak amplitude, so the control has an absolute
+# meaning rather than a multiple of some hidden reference: 0 is silent, 1 is
+# full scale, and the default sits in the middle with room either way.
 CLICK_AMPLITUDE = 0.5
+MIN_VOLUME = 0.0
+MAX_VOLUME = 1.0
+
+
+def clamp_volume(volume: float) -> float:
+    return min(max(float(volume), MIN_VOLUME), MAX_VOLUME)
 
 
 def click_waveform(
@@ -122,9 +131,18 @@ class Metronome:
     any block size and get bit-identical audio (test_block_size_invariance).
     """
 
-    def __init__(self, sr: int, bpm: float = DEFAULT_BPM):
+    def __init__(
+        self,
+        sr: int,
+        bpm: float = DEFAULT_BPM,
+        volume: float = CLICK_AMPLITUDE,
+    ):
         self._sr = sr
-        self._click = click_waveform(sr)
+        # kept at full scale and scaled at render: volume is read on the audio
+        # thread and written from the UI, and a float is a safer thing to swap
+        # under it than an array it is halfway through reading
+        self._click = click_waveform(sr, amplitude=1.0)
+        self._volume = clamp_volume(volume)
         self._schedule = ClickSchedule(bpm, sr)
         self._position = 0
 
@@ -140,6 +158,14 @@ class Metronome:
     def position(self) -> int:
         """Samples rendered since reset(); the metronome's own clock."""
         return self._position
+
+    @property
+    def volume(self) -> float:
+        return self._volume
+
+    def set_volume(self, volume: float) -> None:
+        """Peak amplitude of the click, 0 (silent) to 1 (full scale)."""
+        self._volume = clamp_volume(volume)
 
     def set_bpm(self, bpm: float) -> None:
         self._schedule.rebase(bpm, self._position)
@@ -164,6 +190,6 @@ class Metronome:
         for k in self._schedule.beats_touching(start, frames, span):
             at = self._schedule.beat_sample(k) - start
             lo, hi = max(at, 0), min(at + span, frames)
-            out[lo:hi] += self._click[lo - at : hi - at]
+            out[lo:hi] += self._click[lo - at : hi - at] * self._volume
         self._position += frames
         return out

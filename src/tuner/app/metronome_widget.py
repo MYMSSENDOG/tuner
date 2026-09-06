@@ -13,14 +13,106 @@ Two ways to set the tempo, because they answer different questions:
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QPushButton, QWidget
 
+from tuner.app.hover_readout import HoverReadout
 from tuner.app.metronome import MetronomeService
-from tuner.core.metronome import MAX_BPM, MIN_BPM
+from tuner.core.metronome import MAX_BPM, MAX_VOLUME, MIN_BPM, MIN_VOLUME
 
 PLAY_TEXT = "▶"
 STOP_TEXT = "■"
 BPM_STEP = 1.0
+
+VOLUME_W = 44  # small, as asked: it sits beside the tempo, not beside the meter
+VOLUME_H = 10
+VOLUME_TRACK = QColor("#2a303c")
+VOLUME_FILL = QColor("#6b7d99")
+VOLUME_FILL_ACTIVE = QColor("#cfe2ff")
+
+
+def volume_from_x(x: int, width: int) -> float:
+    """Where a click at `x` sets the click's peak amplitude, 0..1.
+
+    Snapped to 5%: 44 pixels cannot express more than that, and a readout that
+    reports 63% because of one pixel is noise pretending to be a setting.
+    """
+    fraction = min(1.0, max(0.0, x / max(width - 1, 1)))
+    span = MAX_VOLUME - MIN_VOLUME
+    return MIN_VOLUME + round(fraction * span * 20.0) / 20.0
+
+
+class VolumeBar(QWidget):
+    """The metronome's loudness, as a bar you drag.
+
+    No handle, unlike the input gate's: at 44px wide a 9px grip would be a
+    fifth of the control, and a fill already says where the value is. The
+    number appears over the window on hover, the same way (hover_readout.py).
+    """
+
+    volume_changed = Signal(float)
+
+    def __init__(self, volume: float, parent=None):
+        super().__init__(parent)
+        self._volume = volume
+        self._active = False
+        self._readout = HoverReadout()
+        self.setFixedSize(VOLUME_W, VOLUME_H)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.SizeHorCursor)
+        self.setToolTip("메트로놈 소리 크기")
+
+    @property
+    def volume(self) -> float:
+        return self._volume
+
+    def set_volume(self, volume: float) -> None:
+        """Follow a value someone else chose; does not emit."""
+        self._volume = volume
+        if self._active:
+            self._place_readout()
+        self.update()
+
+    def _apply_x(self, x: int) -> None:
+        volume = volume_from_x(x, self.width())
+        if volume != self._volume:
+            self._volume = volume
+            self.volume_changed.emit(volume)
+        self._place_readout()
+        self.update()
+
+    def _place_readout(self) -> None:
+        self._readout.show_for(
+            self, f"{self._volume * 100:.0f}%", int(self._volume * self.width())
+        )
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._apply_x(int(event.position().x()))
+
+    def mouseMoveEvent(self, event) -> None:
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            self._apply_x(int(event.position().x()))
+
+    def enterEvent(self, event) -> None:
+        self._active = True
+        self._place_readout()
+        self.update()
+
+    def leaveEvent(self, event) -> None:
+        self._active = False
+        self._readout.hide()
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), VOLUME_TRACK)
+        fill = int(self._volume * self.width())
+        if fill > 0:
+            painter.fillRect(
+                0, 0, fill, self.height(),
+                VOLUME_FILL_ACTIVE if self._active else VOLUME_FILL,
+            )
 
 
 class MetronomeBar(QWidget):
@@ -53,6 +145,11 @@ class MetronomeBar(QWidget):
 
         self._up = self._button("+", lambda: self._nudge(BPM_STEP), width=24)
         row.addWidget(self._up)
+
+        row.addSpacing(6)
+        self._volume = VolumeBar(service.volume)
+        self._volume.volume_changed.connect(self._service.set_volume)
+        row.addWidget(self._volume, alignment=Qt.AlignmentFlag.AlignVCenter)
         row.addStretch(1)
 
         self._refresh()
@@ -94,6 +191,11 @@ class MetronomeBar(QWidget):
         )
         if accepted:
             self.set_bpm(float(value))
+
+    def set_volume(self, volume: float) -> None:
+        """Single path for volume, so the bar shows what is actually playing —
+        the service clamps and this follows the result."""
+        self._volume.set_volume(self._service.set_volume(volume))
 
     def set_bpm(self, bpm: float) -> None:
         """Single path for every tempo change, so the button always shows what

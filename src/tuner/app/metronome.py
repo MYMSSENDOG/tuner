@@ -19,7 +19,13 @@ import numpy as np
 
 from tuner.audio.output import AudioOutput
 from tuner.core.interference import HeardClicks
-from tuner.core.metronome import DEFAULT_BPM, Metronome, clamp_bpm
+from tuner.core.metronome import (
+    CLICK_AMPLITUDE,
+    DEFAULT_BPM,
+    Metronome,
+    clamp_bpm,
+    clamp_volume,
+)
 
 
 class MetronomeService:
@@ -29,11 +35,13 @@ class MetronomeService:
         self,
         output: AudioOutput,
         bpm: float = DEFAULT_BPM,
+        volume: float = CLICK_AMPLITUDE,
         clock: Callable[[], float] = time.monotonic,
     ):
         self._output = output
         self._clock = clock
         self._bpm = clamp_bpm(bpm)
+        self._volume = clamp_volume(volume)
         self._metronome: Metronome | None = None
         self._running = False
         # handed to the tuner engine once, at construction. It is told the
@@ -50,6 +58,24 @@ class MetronomeService:
     def running(self) -> bool:
         return self._running
 
+    @property
+    def volume(self) -> float:
+        return self._volume
+
+    def set_volume(self, volume: float) -> float:
+        """How loud the click is. Live, and it needs no restart — turning it
+        down while it plays is the only way to find the right level.
+
+        Turning it to nothing also turns off click suppression, without
+        anything here saying so: the tuner finds the beat by listening
+        (core/interference.py), and a click the microphone cannot hear is one
+        it will not freeze the display for.
+        """
+        self._volume = clamp_volume(volume)
+        if self._metronome is not None:
+            self._metronome.set_volume(self._volume)
+        return self._volume
+
     def set_bpm(self, bpm: float) -> float:
         """Change tempo, mid-beat if need be. Returns the value actually taken
         (the request is clamped, never rejected)."""
@@ -64,7 +90,7 @@ class MetronomeService:
             return
         # built for the rate the device will actually open at, which is why
         # AudioOutput can be asked for it before the stream exists
-        self._metronome = Metronome(self._output.sample_rate, self._bpm)
+        self._metronome = Metronome(self._output.sample_rate, self._bpm, self._volume)
         self._running = True
         self.clicks.set_period(60.0 / self._bpm)
         self._output.start(self._render)

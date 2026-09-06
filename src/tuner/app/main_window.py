@@ -29,7 +29,7 @@ from tuner.app.trace_widget import PitchTraceWidget
 from tuner.audio.input import AudioInput
 from tuner.audio.output import AudioOutput
 from tuner.audio.sounddevice_output import SoundDeviceOutput
-from tuner.core.metronome import DEFAULT_BPM
+from tuner.core.metronome import CLICK_AMPLITUDE, DEFAULT_BPM
 
 # Bumped when the default window size changes: a stored geometry from the
 # tall layout would otherwise survive the update and re-stretch the window,
@@ -241,6 +241,10 @@ class MainWindow(QMainWindow):
         self._metronome_bar.set_bpm(
             stored_bpm if isinstance(stored_bpm, float) else DEFAULT_BPM
         )
+        stored_volume = s.value("metronome_volume", CLICK_AMPLITUDE, type=float)
+        self._metronome_bar.set_volume(
+            stored_volume if isinstance(stored_volume, float) else CLICK_AMPLITUDE
+        )
 
         stored_gate = s.value("input_gate_dbfs", self._engine.input_gate_dbfs, type=float)
         if isinstance(stored_gate, float):
@@ -258,6 +262,7 @@ class MainWindow(QMainWindow):
         s.setValue("a4_hz", self._a4_spin.value())
         s.setValue("device_name", self._device_combo.currentText())
         s.setValue("bpm", self._metronome.bpm)
+        s.setValue("metronome_volume", self._metronome.volume)
         s.setValue("input_gate_dbfs", self._engine.input_gate_dbfs)
         s.setValue("always_on_top", self._pin_check.isChecked())
         s.setValue(GEOMETRY_KEY, self.saveGeometry())
