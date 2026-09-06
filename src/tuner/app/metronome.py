@@ -21,10 +21,13 @@ from tuner.audio.output import AudioOutput
 from tuner.core.interference import HeardClicks
 from tuner.core.metronome import (
     CLICK_AMPLITUDE,
+    CLICK_SOUNDS,
     DEFAULT_BPM,
+    DEFAULT_SOUND,
     Metronome,
     clamp_bpm,
     clamp_volume,
+    sound_waveform,
 )
 
 
@@ -36,12 +39,14 @@ class MetronomeService:
         output: AudioOutput,
         bpm: float = DEFAULT_BPM,
         volume: float = CLICK_AMPLITUDE,
+        sound: str = DEFAULT_SOUND,
         clock: Callable[[], float] = time.monotonic,
     ):
         self._output = output
         self._clock = clock
         self._bpm = clamp_bpm(bpm)
         self._volume = clamp_volume(volume)
+        self._sound = sound if sound in CLICK_SOUNDS else DEFAULT_SOUND
         self._metronome: Metronome | None = None
         self._running = False
         # handed to the tuner engine once, at construction. It is told the
@@ -49,6 +54,10 @@ class MetronomeService:
         # from the microphone, which is why a wrong latency figure or a
         # drifting output clock cannot aim it wrongly (docs/metronome.md).
         self.clicks = HeardClicks()
+        # a one-shot renderer, live only while the sound picker is auditioning
+        # something with the beat stopped
+        self._preview: np.ndarray | None = None
+        self._preview_at = 0
 
     @property
     def bpm(self) -> float:
@@ -61,6 +70,58 @@ class MetronomeService:
     @property
     def volume(self) -> float:
         return self._volume
+
+    @property
+    def sound(self) -> str:
+        return self._sound
+
+    def set_sound(self, name: str) -> str:
+        """Change what a beat sounds like, mid-bar. Returns the name taken —
+        an unknown one falls back to the default rather than going silent."""
+        self._sound = name if name in CLICK_SOUNDS else DEFAULT_SOUND
+        self._publish_sound_length()
+        if self._metronome is not None:
+            self._metronome.set_sound(self._sound)
+        return self._sound
+
+    def preview(self, name: str) -> None:
+        """Let the sound be heard, which is the only way anyone picks one.
+
+        Running, that is the next beat and nothing else is needed. Stopped, it
+        is one click through the device, which the caller ends with
+        end_preview() once it has been heard.
+        """
+        self.set_sound(name)
+        if self._running:
+            return
+        # clicking down a list auditions several in a row; that is one stream
+        # with the buffer swapped under it, not one stream per row
+        open_already = self._preview is not None
+        self._preview = sound_waveform(
+            self._sound, self._output.sample_rate, self._volume
+        )
+        self._preview_at = 0
+        if not open_already:
+            self._output.start(self._render)
+
+    def end_preview(self) -> None:
+        """Close the device the preview opened. A no-op while the beat runs,
+        which owns the device itself."""
+        if self._preview is not None and not self._running:
+            self._output.stop()
+        self._preview = None
+
+    @property
+    def previewing(self) -> bool:
+        return self._preview is not None and not self._running
+
+    def _publish_sound_length(self) -> None:
+        """The suppressor is told how long our sound lasts as well as how
+        often — both are things we know because we are the one playing it."""
+        self.clicks.set_sound_length(
+            len(sound_waveform(self._sound, self._output.sample_rate))
+            / self._output.sample_rate
+        )
 
     def set_volume(self, volume: float) -> float:
         """How loud the click is. Live, and it needs no restart — turning it
@@ -88,11 +149,15 @@ class MetronomeService:
     def start(self) -> None:
         if self._running:
             return
+        self._preview = None  # the beat takes the device over from any audition
         # built for the rate the device will actually open at, which is why
         # AudioOutput can be asked for it before the stream exists
-        self._metronome = Metronome(self._output.sample_rate, self._bpm, self._volume)
+        self._metronome = Metronome(
+            self._output.sample_rate, self._bpm, self._volume, self._sound
+        )
         self._running = True
         self.clicks.set_period(60.0 / self._bpm)
+        self._publish_sound_length()
         self._output.start(self._render)
 
     def stop(self) -> None:
@@ -112,5 +177,16 @@ class MetronomeService:
         when the beat is audible is the microphone's business, not ours."""
         metronome = self._metronome
         if metronome is None:
-            return np.zeros(frames)
+            return self._render_preview(frames)
         return metronome.render(frames)
+
+    def _render_preview(self, frames: int) -> np.ndarray:
+        out = np.zeros(frames)
+        sound = self._preview
+        if sound is None:
+            return out
+        take = max(min(len(sound) - self._preview_at, frames), 0)
+        if take:
+            out[:take] = sound[self._preview_at : self._preview_at + take]
+        self._preview_at += frames
+        return out

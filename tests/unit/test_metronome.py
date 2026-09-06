@@ -15,11 +15,15 @@ from numpy.lib.stride_tricks import sliding_window_view
 
 from tests.metrics import record
 from tuner.core.metronome import (
+    CLICK_AMPLITUDE,
+    CLICK_SOUNDS,
+    DEFAULT_SOUND,
     MAX_BPM,
     MIN_BPM,
     ClickSchedule,
     Metronome,
     click_waveform,
+    sound_waveform,
 )
 
 SR = 44100
@@ -158,3 +162,59 @@ def test_beat_samples_in_reports_the_span_it_was_asked_about():
     assert metronome.beat_samples_in(0, SR) == [0, period]
     assert metronome.beat_samples_in(1, period - 1) == []  # between two beats
     assert metronome.beat_samples_in(period, 1) == [period]  # exactly on one
+
+
+# --- the sounds a beat can make ------------------------------------------
+
+
+@pytest.mark.parametrize("name", list(CLICK_SOUNDS))
+def test_every_sound_is_mixable(name):
+    """Whatever it sounds like, it is mixed into a stream at an arbitrary
+    sample: it has to start and end at silence, or it adds a step of its own
+    that the tuner then hears as a transient the metronome never played."""
+    wave = sound_waveform(name, SR)
+    assert wave[0] == 0.0
+    assert abs(wave[-1]) < 1e-9
+    # at the asked-for amplitude and never above it. Not exactly equal: the
+    # original click is written analytically rather than normalised, so its
+    # peak lands wherever the sine's crest falls between two samples (0.4969).
+    peak = float(np.max(np.abs(wave)))
+    assert 0.95 * CLICK_AMPLITUDE <= peak <= CLICK_AMPLITUDE
+    # short enough not to smear the beat it marks, even at 300 BPM (200ms)
+    assert 0.0 < len(wave) / SR <= 0.060
+
+
+@pytest.mark.parametrize("name", list(CLICK_SOUNDS))
+def test_every_sound_is_deterministic(name):
+    """Two of these are built from noise. A metronome that renders differently
+    run to run could not be checked to the sample anywhere in this file."""
+    assert np.array_equal(sound_waveform(name, SR), sound_waveform(name, SR))
+
+
+def test_the_default_sound_is_the_one_that_was_the_only_one():
+    assert DEFAULT_SOUND == "클릭"
+    assert np.array_equal(sound_waveform(DEFAULT_SOUND, SR), click_waveform(SR))
+
+
+def test_an_unknown_sound_falls_back_rather_than_going_silent():
+    """A settings file naming a sound this build dropped must not leave the
+    metronome playing nothing."""
+    assert np.array_equal(sound_waveform("존재하지 않음", SR), sound_waveform(DEFAULT_SOUND, SR))
+
+
+def test_sounds_are_actually_different():
+    """Guards against a registry where two entries quietly resolve the same."""
+    rendered = [sound_waveform(name, SR) for name in CLICK_SOUNDS]
+    for i, a in enumerate(rendered):
+        for b in rendered[i + 1 :]:
+            assert len(a) != len(b) or not np.array_equal(a, b)
+
+
+def test_changing_sound_keeps_the_beat():
+    """Swapping the waveform must not move where the beats are."""
+    metronome = Metronome(SR, 120.0)
+    before = metronome.beat_samples_in(0, SR)
+    metronome.set_sound("틱")
+    assert metronome.sound == "틱"
+    assert metronome.beat_samples_in(0, SR) == before
+    assert onset_samples(metronome.render(SR))[0] <= 2

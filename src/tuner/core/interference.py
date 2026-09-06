@@ -54,6 +54,11 @@ CLICK_SUPPRESSION_ENABLED = True
 # tools/promote) before trusting 20.
 CLICK_LEAD_S = 0.010
 CLICK_TAIL_S = 0.030
+# ...which generalises: the tail is the sound's own length plus what the room
+# adds after it. The 20ms click gives 20 + 10 = 30, exactly the value the
+# sweep settled on, and a 45ms beep gets the 55 it needs (at 30 its tail
+# reached past the window and one stray name got through).
+ROOM_DECAY_S = 0.010
 
 
 class InterferenceSource(Protocol):
@@ -211,6 +216,11 @@ class HeardClicks:
             return
         self._period = period_s
         self._forget()
+
+    def set_sound_length(self, seconds: float) -> None:
+        """How long the sound we are making lasts. The window has to cover it
+        or its tail reaches past and gets tuned."""
+        self._tail = seconds + ROOM_DECAY_S
 
     def idle(self) -> None:
         """The metronome stopped. Nothing to look for."""

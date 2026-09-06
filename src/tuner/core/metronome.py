@@ -20,6 +20,7 @@ tests/unit/test_metronome.py:
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 import numpy as np
 
@@ -65,6 +66,87 @@ def click_waveform(
     fade = min(n, max(round(sr * 0.004), 1))
     envelope[-fade:] *= np.linspace(1.0, 0.0, fade)
     return (amplitude * envelope * np.sin(2.0 * np.pi * freq_hz * t)).astype(np.float64)
+
+
+def _shaped(samples: np.ndarray, sr: int, amplitude: float, fade_ms: float = 3.0):
+    """Normalise to `amplitude` and make both ends exactly zero.
+
+    Every sound goes through here, because a click is mixed into a stream at
+    an arbitrary sample and a waveform that does not start and end at silence
+    adds a step of its own — an edge the tuner would then hear as a transient
+    that the metronome never played.
+    """
+    peak = float(np.max(np.abs(samples)))
+    if peak > 0:
+        samples = samples * (amplitude / peak)
+    fade = min(len(samples), max(round(sr * fade_ms / 1000.0), 1))
+    samples[-fade:] *= np.linspace(1.0, 0.0, fade)
+    samples[0] = 0.0
+    return samples.astype(np.float64)
+
+
+def _noise(n: int, seed: int) -> np.ndarray:
+    """Deterministic noise. A metronome that renders differently run to run
+    could not be tested to the sample (tests/unit/test_metronome.py)."""
+    return np.random.default_rng(seed).normal(0.0, 1.0, n)
+
+
+def woodblock_waveform(sr: int, amplitude: float = CLICK_AMPLITUDE) -> np.ndarray:
+    """Dry and wooden: inharmonic partials over a very short body.
+
+    The partials are deliberately not a harmonic series — that is what stops
+    it reading as a pitch, which matters here more than usual because the
+    thing listening to it is a pitch detector.
+    """
+    n = max(round(sr * 0.014), 1)
+    t = np.arange(n) / sr
+    body = sum(
+        weight * np.exp(-decay * t) * np.sin(2.0 * np.pi * freq * t)
+        for freq, weight, decay in (
+            (1180.0, 1.0, 90.0), (1870.0, 0.55, 130.0), (2610.0, 0.25, 180.0)
+        )
+    )
+    attack = _noise(n, seed=1) * np.exp(-900.0 * t) * 0.6
+    return _shaped(body + attack, sr, amplitude, fade_ms=2.0)
+
+
+def beep_waveform(sr: int, amplitude: float = CLICK_AMPLITUDE) -> np.ndarray:
+    """Softer and longer, for people who find the click sharp. One tone, a
+    gentle attack, 45ms — still a fifth of the fastest beat allowed."""
+    n = max(round(sr * 0.045), 1)
+    t = np.arange(n) / sr
+    rise = min(n, max(round(sr * 0.004), 1))
+    envelope = np.exp(-14.0 * t)
+    envelope[:rise] *= np.linspace(0.0, 1.0, rise)
+    return _shaped(envelope * np.sin(2.0 * np.pi * 880.0 * t), sr, amplitude, fade_ms=6.0)
+
+
+def tick_waveform(sr: int, amplitude: float = CLICK_AMPLITUDE) -> np.ndarray:
+    """A bare transient: 6ms of band-limited noise. Nothing to mistake for a
+    pitch at all, and it cuts through a loud instrument better than a tone."""
+    n = max(round(sr * 0.006), 1)
+    t = np.arange(n) / sr
+    spectrum = np.fft.rfft(_noise(n, seed=2))
+    freqs = np.fft.rfftfreq(n, 1.0 / sr)
+    spectrum[(freqs < 1500.0) | (freqs > 6000.0)] = 0.0
+    return _shaped(np.fft.irfft(spectrum, n) * np.exp(-260.0 * t), sr, amplitude, fade_ms=1.5)
+
+
+# Every sound the metronome can make. Ordered as the UI offers them, and the
+# first is the default — the one that was the only one.
+CLICK_SOUNDS: dict[str, Callable[[int, float], np.ndarray]] = {
+    "클릭": lambda sr, amplitude: click_waveform(sr, amplitude=amplitude),
+    "우드블록": woodblock_waveform,
+    "비프": beep_waveform,
+    "틱": tick_waveform,
+}
+DEFAULT_SOUND = next(iter(CLICK_SOUNDS))
+
+
+def sound_waveform(name: str, sr: int, amplitude: float = CLICK_AMPLITUDE) -> np.ndarray:
+    """The named sound, falling back to the default so a settings file naming
+    a sound this build no longer has cannot stop the metronome."""
+    return CLICK_SOUNDS.get(name, CLICK_SOUNDS[DEFAULT_SOUND])(sr, amplitude)
 
 
 def clamp_bpm(bpm: float) -> float:
@@ -136,12 +218,14 @@ class Metronome:
         sr: int,
         bpm: float = DEFAULT_BPM,
         volume: float = CLICK_AMPLITUDE,
+        sound: str = DEFAULT_SOUND,
     ):
         self._sr = sr
         # kept at full scale and scaled at render: volume is read on the audio
         # thread and written from the UI, and a float is a safer thing to swap
         # under it than an array it is halfway through reading
-        self._click = click_waveform(sr, amplitude=1.0)
+        self._sound = sound
+        self._click = sound_waveform(sound, sr, amplitude=1.0)
         self._volume = clamp_volume(volume)
         self._schedule = ClickSchedule(bpm, sr)
         self._position = 0
@@ -166,6 +250,17 @@ class Metronome:
     def set_volume(self, volume: float) -> None:
         """Peak amplitude of the click, 0 (silent) to 1 (full scale)."""
         self._volume = clamp_volume(volume)
+
+    @property
+    def sound(self) -> str:
+        return self._sound
+
+    def set_sound(self, name: str) -> None:
+        """Swap the waveform. The reference is rebound in one assignment, so
+        a render already under way finishes with the sound it started on
+        rather than half of each."""
+        self._sound = name
+        self._click = sound_waveform(name, self._sr, amplitude=1.0)
 
     def set_bpm(self, bpm: float) -> None:
         self._schedule.rebase(bpm, self._position)

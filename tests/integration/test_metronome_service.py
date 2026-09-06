@@ -128,3 +128,42 @@ def test_a_stopped_metronome_renders_silence():
     render = output._render
     metronome.stop()
     assert not np.any(render(256))
+
+
+def test_sound_can_be_changed_mid_bar():
+    """Trying sounds means hearing them one after another, not restarting the
+    device between each."""
+    from tuner.core.metronome import CLICK_SOUNDS
+
+    metronome, output = service(bpm=120.0)
+    metronome.start()
+    output.pull(SR // 4)
+
+    for name in CLICK_SOUNDS:
+        assert metronome.set_sound(name) == name
+        assert len(output.pull(SR // 4)) == SR // 4
+    assert output.start_count == 1 and output.stop_count == 0
+    metronome.stop()
+
+
+def test_an_unknown_sound_falls_back():
+    metronome, _ = service()
+    from tuner.core.metronome import DEFAULT_SOUND
+
+    assert metronome.set_sound("없는 소리") == DEFAULT_SOUND
+    assert metronome.sound == DEFAULT_SOUND
+
+
+def test_the_suppressor_is_told_how_long_the_sound_lasts():
+    """It is told the tempo *and* the sound's length — both are things we know
+    because we are the one playing it. Without the length, a 45ms beep's tail
+    reaches past a window sized for a 20ms click and gets tuned."""
+    from tuner.core.interference import ROOM_DECAY_S
+    from tuner.core.metronome import sound_waveform
+
+    metronome, _ = service()
+    metronome.set_sound("비프")
+    metronome.start()
+    expected = len(sound_waveform("비프", SR)) / SR + ROOM_DECAY_S
+    assert metronome.clicks._tail == pytest.approx(expected, abs=1e-6)
+    metronome.stop()
