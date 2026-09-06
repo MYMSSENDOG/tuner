@@ -6,6 +6,7 @@
 ┌─────────────────────────────────────────────────┐
 │ app/        UI·조립 (PySide6)                     │
 │   main_window.py   창, 컨트롤(A4/장치/핀)          │
+│   level_widget.py  입력 레벨 바 + 게이트 조절        │
 │   meter_widget.py  미터 렌더링 (Qt 페인팅)          │
 │   meter_model.py   미터 계산 (색상·바늘각, 무-Qt)    │
 │   engine.py        audio→core 파이프라인 조립(무-Qt) │
