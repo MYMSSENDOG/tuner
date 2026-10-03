@@ -106,7 +106,7 @@ tests/
 │                    실오디오 vs 주석 비교, 표시 안정성(음이름 깜빡임)
 ├── integration/     (이어서) 메트로놈 조립·간섭 억제·컨트롤 줄
 ├── e2e/             실기기 전용(없으면 자체 skip): 실제 장치 열거/캡처/핫스왑,
-│                    always-on-top 실제 스태킹, 음향 루프백(스피커→마이크)
+│                    always-on-top 실제 스태킹
 ├── invariants/      벽: 튜닝으로는 깨질 수 없는 명제만 (아래 "불변식 벽")
 ├── fixtures/audio/  Iowa MIS 실악기 샘플 + .ref.json + 노이즈/간섭 변형
 └── fixtures/notes/  악기별 크로마틱 단음 뱅크 + bank.json(창 단위 피치)
