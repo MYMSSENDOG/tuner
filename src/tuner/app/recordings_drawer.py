@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from tuner.app.round_button import MIC, PAUSE, PLAY, STOP, RoundButton
+from tuner.app.round_button import MIC, PAUSE, PLAY, RING_SPAN, STOP, RoundButton
 
 WIDTH = 280  # a title, a date and a duration on one line, with room to read
 
@@ -48,9 +48,12 @@ RECORD_GLYPH = "#ffffff"
 PLAY_FILL = "#4d5f7d"
 PLAY_GLYPH = "#dce6f5"
 
-MIC_DIAMETER = 52
-STOP_DIAMETER = 62
-PLAY_DIAMETER = 62
+# The mic sits under a list that wants every pixel, so it is the smallest of
+# the three: big enough to aim at without looking, no bigger. Stop and play own
+# their pages, and the stop button also wears rings while a take is live.
+MIC_DIAMETER = 34
+STOP_DIAMETER = 56
+PLAY_DIAMETER = 56
 
 # The level history drawn while recording: one bar per reading, oldest left.
 # Not the file's waveform — it is the same input level the bar under the meter
@@ -246,7 +249,7 @@ class RecordingsDrawer(QWidget):
         layout.addWidget(self._empty, 1)
 
         tray = QHBoxLayout()
-        tray.setContentsMargins(0, 0, 0, 0)
+        tray.setContentsMargins(0, 6, 0, 8)
         self._mic = RoundButton(MIC, MIC_DIAMETER, RECORD_FILL, RECORD_GLYPH)
         self._mic.setToolTip("녹음 시작 (Alt+R)")
         self._mic.clicked.connect(self.record_pressed.emit)
@@ -272,7 +275,9 @@ class RecordingsDrawer(QWidget):
         layout.addWidget(self._trail)
 
         tray = QHBoxLayout()
-        self._stop = RoundButton(STOP, STOP_DIAMETER, RECORD_FILL, RECORD_GLYPH)
+        self._stop = RoundButton(
+            STOP, STOP_DIAMETER, RECORD_FILL, RECORD_GLYPH, ring_span=RING_SPAN
+        )
         self._stop.setToolTip("중지하고 저장 (Alt+S)")
         self._stop.set_ringed(True)
         self._stop.clicked.connect(self.stop_pressed.emit)

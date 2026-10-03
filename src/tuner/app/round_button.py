@@ -20,7 +20,7 @@ STOP = "stop"
 PLAY = "play"
 PAUSE = "pause"
 
-RING_SPAN = 20  # room around the circle for the rings, so they are never clipped
+RING_SPAN = 14  # room a ringed button leaves around itself, so rings are not clipped
 RING_COLOR = QColor("#5a6c86")
 DISABLED_FILL = QColor("#424b5c")
 DISABLED_GLYPH = QColor("#6b7686")
@@ -34,14 +34,25 @@ class RoundButton(QAbstractButton):
     """A filled circle with a drawn glyph. Optionally ringed, as the Windows
     recorder rings the stop button while a take is running."""
 
-    def __init__(self, glyph: str, diameter: int, fill: str, glyph_color: str, parent=None):
+    def __init__(
+        self,
+        glyph: str,
+        diameter: int,
+        fill: str,
+        glyph_color: str,
+        parent=None,
+        ring_span: int = 0,
+    ):
         super().__init__(parent)
         self._glyph = glyph
         self._diameter = diameter
         self._fill = QColor(fill)
         self._glyph_color = QColor(glyph_color)
         self._ringed = False
-        self.setFixedSize(diameter + 2 * RING_SPAN, diameter + 2 * RING_SPAN)
+        # Only a button that will wear rings reserves room for them. The mic
+        # never does, and reserving it anyway made that button's widget half
+        # empty space in a panel that has none to spare.
+        self.setFixedSize(diameter + 2 * ring_span, diameter + 2 * ring_span)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
