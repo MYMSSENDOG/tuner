@@ -127,6 +127,7 @@ tests/
 | `test_metamorphic.py` | 음량·부호·DC·블록 크기·앞 무음·A4 를 바꿔도 표시는 그대로 | YIN 정규화와 링버퍼의 정의 |
 | `test_display_contract.py` | 이름·숫자·Hz 가 서로 모순되지 않는다, 스무딩은 검출 밖의 값을 만들지 않는다 | ±50 제품 규칙 + 산수 |
 | `test_arithmetic_truth.py` | 음이름 격자 **밖** 랜덤 주파수도 ±2¢ (씨드 고정) | 합성한 주파수 그 자체 |
+| `test_shortcuts.py` | 두 키가 두 가지를 뜻하지 않는다 | Qt 가 충돌을 조용히 삼킨다는 사실 |
 
 각 파일에는 규칙이 실제로 무언가를 잡는지 확인하는 **검정력 테스트**가
 같이 있다 (`..._would_catch_...`) — 아무것도 읽지 않는 검사기는 모든 것을
@@ -202,8 +203,8 @@ while True:
   `InterferenceSource`(메서드 1개)를 충족하는 구현을 만들어 엔진에 넘긴다.
   `tests/integration/test_metronome_interference.py`의 검정력 테스트가
   "억제가 실제로 뭔가 하고 있는지"를 자동 검증한다.
-- **사용자가 겪은 결함을 데이터로**: 앱에서 Ctrl+R(직전 10초) 또는 기록
-  버튼/Ctrl+L(시작~정지 전 구간) → `~/.tuner/reports/<utc>/` (오디오 + 표시
+- **사용자가 겪은 결함을 데이터로**: 앱에서 Ctrl+R(직전 10초) 또는
+  Ctrl+Shift+R(시작~정지 전 구간) → `~/.tuner/reports/<utc>/` (오디오 + 표시
   트레이스 + 코드 sha). `python -m tuner.tools.promote <report>` 가 **재현
   여부부터** 판정하고(`--name` 을 주면 픽스처로 승격 + 주석 생성),
   `trace <report>/trace.jsonl --explain` 이 검출·표시·이름이 어긋난 순간을
