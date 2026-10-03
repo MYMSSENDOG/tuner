@@ -217,10 +217,13 @@ def test_volume_survives_a_restart(make_window):
 
 
 def test_the_window_did_not_get_wider(make_window):
-    """The metronome row must not become the widest thing in the window; the
-    controls row's 294px is the floor and this feature does not spend it."""
+    """The volume bar must not make the metronome row the widest thing in the
+    window. Compared against the controls row rather than a fixed number, so
+    that this keeps testing the rule after the row above it changes."""
+    from tests.integration.test_metronome_ui import controls_row_width
+
     window = make_window()
-    assert window.minimumSizeHint().width() <= 294
+    assert window._metronome_bar.minimumSizeHint().width() <= controls_row_width(window)
     window.close()
 
 

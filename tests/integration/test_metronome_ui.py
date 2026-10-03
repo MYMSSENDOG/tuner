@@ -11,10 +11,24 @@ from PySide6.QtCore import QSettings
 from tests.fakes import FakeAudioInput, FakeAudioOutput
 from tests.synth import tone
 
-# The floor set by the controls row (A4 + device + pin). The metronome row is
-# under it and must not become the widest thing in the window - the compact
-# window was measured at 294px and this feature is not allowed to spend it.
-MAX_WINDOW_WIDTH = 294
+# The metronome row must never become the widest thing in the window. That used
+# to be written as "<= 294px", the controls row's measured floor at the time -
+# until the recorder put a button on that row and the number went stale while
+# the rule it stood for did not. Measured against the controls row instead, the
+# seal says what it means and survives the next thing added above it.
+
+
+def tuner_column(window):
+    """The tuner's own vertical stack.
+
+    The central widget is now a shell holding this column, the drawer handle
+    and the drawer; the column is what every layout assertion here is about.
+    """
+    return window.centralWidget().layout().itemAt(0).widget()
+
+
+def controls_row_width(window) -> int:
+    return tuner_column(window).layout().itemAt(0).minimumSize().width()
 
 
 @pytest.fixture
@@ -33,7 +47,7 @@ def make_window(qapp, tmp_path):
 def test_row_sits_between_the_controls_and_the_meter(make_window):
     """Where the user asked for it: under A4/device/pin, above the display."""
     window = make_window()
-    layout = window.centralWidget().layout()
+    layout = tuner_column(window).layout()
     order = [layout.itemAt(i).widget() for i in range(layout.count())]
     assert order.index(window._metronome_bar) == 1  # 0 is the controls row
     assert order.index(window._metronome_bar) < order.index(window._meter)
@@ -42,7 +56,7 @@ def test_row_sits_between_the_controls_and_the_meter(make_window):
 
 def test_the_row_does_not_widen_the_window(make_window):
     window = make_window()
-    assert window.minimumSizeHint().width() <= MAX_WINDOW_WIDTH
+    assert window._metronome_bar.minimumSizeHint().width() <= controls_row_width(window)
     window.close()
 
 

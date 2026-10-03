@@ -20,11 +20,16 @@ from PySide6.QtWidgets import (
 )
 
 from tuner.app.capture import MAX_SESSION_SECONDS, RING_SECONDS, FieldCapture
+from tuner.app.drawer_handle import WIDTH as HANDLE_WIDTH
+from tuner.app.drawer_handle import DrawerHandle
 from tuner.app.engine import DIGITAL_SILENCE_DBFS, TunerEngine, TunerReading
 from tuner.app.level_widget import InputLevelBar
+from tuner.app.level_widget import fill_fraction as level_fraction
 from tuner.app.meter_widget import MeterWidget
 from tuner.app.metronome import MetronomeService
 from tuner.app.metronome_widget import MetronomeBar
+from tuner.app.recordings_drawer import WIDTH as DRAWER_WIDTH
+from tuner.app.recordings_drawer import RecordingsDrawer
 from tuner.app.trace_widget import PitchTraceWidget
 from tuner.audio.input import AudioInput
 from tuner.audio.output import AudioOutput
@@ -39,7 +44,15 @@ from tuner.core.metronome import CLICK_AMPLITUDE, DEFAULT_BPM, DEFAULT_SOUND
 # silently wider than its own default. Without it the floor is 294 and the
 # default is reachable, but only for someone who is not carrying a v5
 # geometry.
-GEOMETRY_KEY = "geometry_v6"
+# v7: the drawer handle was welded to the right edge, so the default grew by
+# its 11px. A stored v6 geometry would have left the tuner column 11px
+# narrower than it has always been.
+GEOMETRY_KEY = "geometry_v7"
+
+# What the tuner column itself is, unchanged since the meter was drawn: the
+# controls row sets a 294px floor and this is the room above it. The drawer
+# and its handle are added beside this, never taken out of it.
+TUNER_WIDTH = 310
 
 # The two report keys. Ctrl is the *report* family (developer-facing: audio
 # plus what the meter showed, for turning a defect into a fixture); the
@@ -78,6 +91,28 @@ def enable_ctrl_c(window: QMainWindow) -> QTimer:
 
 SESSION_IDLE_TEXT = "● 리포트"
 SESSION_ACTIVE_TEXT = "■ 리포트 중 {}"
+
+# --- the player-facing recorder ---------------------------------------------
+# Alt, not Ctrl: the modifier is what tells this apart from the report keys
+# above, and it keeps the two families from ever being confused for each other
+# (docs/recording.md 결정 7). Three actions, two keys each, all reachable with
+# one hand while the other is holding an instrument.
+RECORD_SHORTCUT = "Alt+R"
+PAUSE_SHORTCUT = "Alt+P"
+STOP_SHORTCUT = "Alt+S"
+DRAWER_SHORTCUT = "Alt+L"
+
+RECORD_IDLE_TEXT = "●"
+RECORD_ACTIVE_TEXT = "●"
+RECORD_BUTTON_W = 22  # the dot and its padding; the row has 16px of slack
+RECORD_IDLE_STYLE = (
+    "background-color: #4a2b2e; border: 1px solid #7d3f43; color: #ff8a8a;"
+    " padding: 2px 0;"
+)
+RECORD_ACTIVE_STYLE = (
+    "background-color: #7a3b3b; border: 1px solid #a35151; color: #ffd9d9;"
+    " padding: 2px 0;"
+)
 
 
 class _ReadingBridge(QObject):
@@ -128,6 +163,17 @@ class MainWindow(QMainWindow):
         self._report_shortcut = QShortcut(QKeySequence(REPORT_SHORTCUT), self)
         self._report_shortcut.activated.connect(self.save_report)
 
+        # The recorder's keys exist whether or not the drawer is open: the
+        # point of them is that a player's hands are on the instrument.
+        self._recorder_shortcuts = [
+            self._shortcut(RECORD_SHORTCUT, self.toggle_recording),
+            self._shortcut(PAUSE_SHORTCUT, self.toggle_pause),
+            self._shortcut(STOP_SHORTCUT, self.stop_recording),
+            self._shortcut(DRAWER_SHORTCUT, self.toggle_drawer),
+        ]
+        self._recording = False
+        self._paused = False
+
         self._meter = MeterWidget()
         self._bridge.reading.connect(self._on_reading)
 
@@ -164,6 +210,16 @@ class MainWindow(QMainWindow):
         self._pin_check.setToolTip("Always on top")
         self._pin_check.toggled.connect(self._on_pin_toggled)
         controls.addWidget(self._pin_check)
+
+        # The recorder's one always-visible control. A dot, not a word: the row
+        # is the window's width floor and this is the only thing added to it.
+        self._record_button = QPushButton(RECORD_IDLE_TEXT)
+        self._record_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._record_button.setToolTip(f"녹음 ({RECORD_SHORTCUT})")
+        self._record_button.setFixedWidth(RECORD_BUTTON_W)
+        self._record_button.setStyleSheet(RECORD_IDLE_STYLE)
+        self._record_button.clicked.connect(self.toggle_recording)
+        controls.addWidget(self._record_button)
 
         self._session_button = QPushButton(SESSION_IDLE_TEXT)
         self._session_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -208,9 +264,29 @@ class MainWindow(QMainWindow):
         self._trace = PitchTraceWidget()
         layout.addWidget(self._trace)
         self._silent_readings = 0
+
+        # The tuner is the column above; the drawer hangs off its right edge so
+        # that opening it moves nothing. The handle lives between them and is
+        # the only part of this apparatus that is always on screen.
+        shell = QWidget()
+        shell_layout = QHBoxLayout(shell)
+        shell_layout.setContentsMargins(0, 0, 0, 0)
+        shell_layout.setSpacing(0)
+        shell_layout.addWidget(central, 1)
+        self._drawer_handle = DrawerHandle()
+        self._drawer_handle.toggled.connect(self.toggle_drawer)
+        shell_layout.addWidget(self._drawer_handle)
+        self._drawer = RecordingsDrawer()
+        self._drawer.pause_pressed.connect(self.toggle_pause)
+        self._drawer.stop_pressed.connect(self.stop_recording)
+        self._drawer.folder_pressed.connect(self._open_recordings_folder)
+        self._drawer.hide()
+        shell_layout.addWidget(self._drawer)
+
         central.setStyleSheet("background-color: #3b4252; color: #c7d2e3;")
-        self.setCentralWidget(central)
-        self.resize(310, 190)
+        shell.setStyleSheet("background-color: #3b4252; color: #c7d2e3;")
+        self.setCentralWidget(shell)
+        self.resize(TUNER_WIDTH + HANDLE_WIDTH, 190)
         self._restore_settings()
 
     def start(self) -> None:
@@ -284,6 +360,10 @@ class MainWindow(QMainWindow):
         self._meter.set_reading(reading)
         self._trace.add_reading(reading)
         self._level_bar.set_level(reading.level_dbfs)
+        if self._recording:
+            # The same level the bar shows, kept as a short trail: proof that
+            # the microphone is still live without drawing the file's waveform.
+            self._drawer.push_level(level_fraction(reading.level_dbfs), live=not self._paused)
 
         if reading.level_dbfs <= DIGITAL_SILENCE_DBFS:
             self._silent_readings += 1
@@ -311,6 +391,89 @@ class MainWindow(QMainWindow):
             return None
         self._flash(f"직전 {RING_SECONDS:g}초 저장됨 - {directory}")
         return directory
+
+    def _shortcut(self, key: str, slot) -> QShortcut:
+        shortcut = QShortcut(QKeySequence(key), self)
+        shortcut.activated.connect(slot)
+        return shortcut
+
+    # --- the recorder (UI only so far: no audio is written yet) ------------
+
+    @property
+    def recording(self) -> bool:
+        return self._recording
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
+    @property
+    def drawer_open(self) -> bool:
+        return self._drawer.isVisible()
+
+    def set_drawer_open(self, is_open: bool) -> None:
+        """Open or close the drawer, resizing the window by exactly its width.
+
+        The tuner column keeps its own geometry: only the window's right edge
+        moves, so nothing the player was looking at shifts under them.
+        """
+        if is_open == self.drawer_open:
+            return
+        # Measured *before* the panel appears: showing it raises the window's
+        # minimum width, and Qt grows the window to meet it on the spot. Adding
+        # the drawer's width to the number read afterwards would therefore add
+        # it twice (measured: 331 -> 731 instead of 531).
+        was = self.width()
+        self._drawer.setVisible(is_open)
+        self._drawer_handle.set_open(is_open)
+        if not self.isMaximized() and not self.isFullScreen():
+            # Showing the drawer raises the window's *explicit* minimum width
+            # (Qt writes the layout's minimum onto the window), and hiding it
+            # again does not lower it — so a resize would be clamped and the
+            # window would stay open-width forever. Dropping the minimum lets
+            # the resize through; the layout writes its own back on the next
+            # pass, which is why reopening lands on exactly the same number.
+            self.setMinimumWidth(0)
+            delta = DRAWER_WIDTH if is_open else -DRAWER_WIDTH
+            self.resize(was + delta, self.height())
+
+    def toggle_drawer(self) -> None:
+        self.set_drawer_open(not self.drawer_open)
+
+    def toggle_recording(self) -> None:
+        """Alt+R / the dot. Starts a take and opens the drawer with it."""
+        if self._recording:
+            self.stop_recording()
+            return
+        self._recording = True
+        self._paused = False
+        self._record_button.setText(RECORD_ACTIVE_TEXT)
+        self._record_button.setStyleSheet(RECORD_ACTIVE_STYLE)
+        self._drawer.show_recording(True)
+        self._drawer.set_paused(False)
+        self.set_drawer_open(True)
+
+    def toggle_pause(self) -> None:
+        """Alt+P. Does nothing at all when no take is running — a key that is
+        not applicable says nothing rather than complaining."""
+        if not self._recording:
+            return
+        self._paused = not self._paused
+        self._drawer.set_paused(self._paused)
+
+    def stop_recording(self) -> None:
+        """Alt+S. Ends the take; the save dialog belongs to the next step."""
+        if not self._recording:
+            return
+        self._recording = False
+        self._paused = False
+        self._record_button.setText(RECORD_IDLE_TEXT)
+        self._record_button.setStyleSheet(RECORD_IDLE_STYLE)
+        self._drawer.show_recording(False)
+        self._flash("녹음 중지 — 저장은 아직 붙지 않았습니다")
+
+    def _open_recordings_folder(self) -> None:
+        self._flash("녹음 폴더는 저장 기능과 함께 붙습니다")
 
     def toggle_report_session(self) -> Path | None:
         """The 리포트 button: start keeping everything, or stop and write it."""

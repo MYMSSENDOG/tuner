@@ -29,6 +29,21 @@ def make_window(qapp, tmp_path):
     return factory
 
 
+# The window's measured width floor. Not a budget for the next feature to
+# spend — it is here so that growth is a decision somebody made rather than a
+# drift nobody noticed, which is exactly what the 294 in the metronome tests
+# failed to be once the recorder arrived.
+# === driver: controls row 320 (A4 + device + Pin + the recorder's dot, which
+# === cost 26 of it) plus the drawer handle's 11. Was 294 before the recorder.
+MAX_WINDOW_FLOOR = 331
+
+
+def test_the_window_floor_is_where_it_was_measured(make_window):
+    window = make_window()
+    assert window.minimumSizeHint().width() <= MAX_WINDOW_FLOOR
+    window.close()
+
+
 def test_window_end_to_end(qapp, make_window):
     fake = FakeAudioInput(tone(440.0, 0.3, instrument="violin"))
     window = make_window(fake)
