@@ -1,0 +1,717 @@
+<title>녹음 UI 결정표</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* ---------------------------------------------------------------- tokens */
+:root{
+  --ground:#eef0f3;
+  --surface:#ffffff;
+  --surface-2:#e7eaee;
+  --ink:#1b2029;
+  --ink-2:#3d4756;
+  --muted:#5e6a7c;
+  --rule:#d5dae1;
+  --rule-strong:#b9c1cc;
+  --accent:#5f8e10;
+  --accent-ink:#ffffff;
+  --accent-soft:#e8f1d4;
+  --rec:#c22f2f;
+  --rec-soft:#fae4e4;
+  --done:#2f6fb5;
+  --done-soft:#e2ecf7;
+
+  /* the app's own chrome — fixed in both themes, because a mockup of a dark
+     program must stay dark the way a phone frame stays a phone frame */
+  --app-panel:#3b4252;
+  --app-ink:#c7d2e3;
+  --app-dim:#55627a;
+  --app-track:#2a303c;
+  --app-edge:#454f61;
+  --app-green:#7cb518;
+  --app-green-2:#a5d631;
+  --app-blue:#9ec3ef;
+  --app-blue-2:#6d8cb5;
+  --app-red:#e03131;
+  --app-trace:#2f3542;
+  --app-fill:#55627a;
+  --app-drawer:#343b49;
+
+  --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --sans:"IBM Plex Sans KR","Malgun Gothic",system-ui,-apple-system,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#1e222a; --surface:#272c35; --surface-2:#2f3540;
+    --ink:#dde3ec; --ink-2:#c2cad6; --muted:#8b96a6;
+    --rule:#353c48; --rule-strong:#48515f;
+    --accent:#a5d631; --accent-ink:#1e222a; --accent-soft:#2c3722;
+    --rec:#ef5f5f; --rec-soft:#3a2525;
+    --done:#7fb2e8; --done-soft:#23303d;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#1e222a; --surface:#272c35; --surface-2:#2f3540;
+  --ink:#dde3ec; --ink-2:#c2cad6; --muted:#8b96a6;
+  --rule:#353c48; --rule-strong:#48515f;
+  --accent:#a5d631; --accent-ink:#1e222a; --accent-soft:#2c3722;
+  --rec:#ef5f5f; --rec-soft:#3a2525;
+  --done:#7fb2e8; --done-soft:#23303d;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--ground);color:var(--ink);
+  font-family:var(--sans);font-weight:400;line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:40px 24px 80px}
+
+/* ------------------------------------------------------------- typography */
+h1{font-size:clamp(28px,4.2vw,42px);font-weight:600;letter-spacing:-.025em;line-height:1.15;margin:0 0 10px;text-wrap:balance}
+h2{font-size:clamp(20px,2.6vw,27px);font-weight:600;letter-spacing:-.02em;line-height:1.25;margin:0;text-wrap:balance}
+h3{font-size:15px;font-weight:600;letter-spacing:-.01em;margin:0}
+p{margin:0 0 14px;max-width:66ch}
+a{color:var(--accent);text-underline-offset:3px}
+.lede{font-size:17px;color:var(--ink-2);font-weight:300;max-width:62ch}
+.eyebrow{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+code,.m{font-family:var(--mono);font-size:.88em}
+code{background:var(--surface-2);padding:1px 5px;border-radius:3px;color:var(--ink-2)}
+
+/* ----------------------------------------------------------------- header */
+header{border-bottom:2px solid var(--ink);padding-bottom:22px;margin-bottom:34px}
+.titlerow{display:flex;flex-wrap:wrap;gap:18px;align-items:baseline;justify-content:space-between}
+.specs{font-family:var(--mono);font-size:11.5px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap}
+.specs b{color:var(--ink-2);font-weight:500}
+
+/* --------------------------------------------------------- decision strip */
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(176px,1fr));gap:1px;background:var(--rule-strong);border:1px solid var(--rule-strong);margin-top:24px}
+.cell{background:var(--surface);padding:11px 13px;display:flex;flex-direction:column;gap:3px}
+.cell .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.cell .v{font-size:14px;font-weight:600;line-height:1.35;color:var(--ink)}
+.cell .s{font-size:12px;color:var(--muted);line-height:1.45}
+.cell.open{background:var(--accent-soft)}
+.cell.open .v{color:var(--ink)}
+
+/* --------------------------------------------------------------- sections */
+section{margin-top:52px}
+.sechead{display:flex;gap:14px;align-items:baseline;border-top:1px solid var(--rule-strong);padding-top:14px;margin-bottom:6px;flex-wrap:wrap}
+.secno{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--ground);background:var(--ink);padding:2px 7px;flex:none;align-self:center}
+.secno.open{background:var(--accent);color:var(--accent-ink)}
+.secsub{color:var(--muted);font-size:14.5px;margin:0 0 26px;max-width:70ch}
+
+/* --------------------------------------------------------------- flow row */
+.flow{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:30px 26px;align-items:start}
+.step{display:flex;flex-direction:column;gap:11px}
+.step-head{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap}
+.step-key{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--muted);border:1px solid var(--rule-strong);padding:0 5px;line-height:1.5;flex:none}
+.pick{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.08em;background:var(--accent);color:var(--accent-ink);padding:1px 7px;flex:none}
+.pick.ask{background:var(--rec);color:#fff}
+.note{font-size:13.5px;color:var(--ink-2);margin:0;line-height:1.6}
+.cost{font-family:var(--mono);font-size:11.5px;line-height:1.75;color:var(--muted);border-top:1px dashed var(--rule-strong);padding-top:8px;margin:0}
+.cost b{font-weight:500;color:var(--ink-2)}
+.cost .bad{color:var(--rec)}
+.cost .good{color:var(--accent)}
+
+/* ========================================================== the app window */
+.stage{
+  background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--rule) 55%,transparent) 6px 7px);
+  border:1px solid var(--rule);padding:16px;display:flex;justify-content:center;overflow-x:auto;
+}
+.stage.tall{align-items:center;min-height:150px}
+.winshell{display:flex;align-items:stretch;flex:none;position:relative}
+.win{
+  width:310px;flex:none;background:var(--app-panel);color:var(--app-ink);
+  font-family:var(--sans);font-size:10.5px;line-height:1;
+  display:flex;flex-direction:column;box-shadow:0 6px 18px rgba(12,16,24,.35);user-select:none;
+}
+.win .titlebar{background:#333a47;color:#8e9bb0;font-size:10px;padding:4px 7px;display:flex;justify-content:space-between;letter-spacing:.02em}
+.win .titlebar span:last-child{letter-spacing:.14em;color:#6c7889}
+
+.r{display:flex;align-items:center;gap:4px;padding:4px 6px 2px}
+.r.metro{padding:2px 6px;gap:3px}
+.lab{color:var(--app-ink);opacity:.85}
+.spin,.combo,.btn,.chk{background:#333c4d;border:1px solid var(--app-edge);padding:2px 5px;white-space:nowrap;color:var(--app-ink);border-radius:2px}
+.combo{flex:1;min-width:40px;overflow:hidden;text-overflow:ellipsis}
+.chk{border:0;background:none;padding:2px 0}
+.chk i{display:inline-block;width:8px;height:8px;border:1px solid var(--app-dim);vertical-align:-1px;margin-right:3px;border-radius:1px}
+.btn{min-width:18px;text-align:center}
+.btn.sq{padding:2px 4px}
+.bpm{padding:2px 4px;font-variant-numeric:tabular-nums}
+.vol{width:88px;height:10px;background:var(--app-track);border:1px solid var(--app-edge);border-radius:5px;position:relative;flex:none}
+.vol i{position:absolute;left:0;top:0;bottom:0;width:46%;background:var(--app-fill);border-radius:5px 0 0 5px}
+.vol u{position:absolute;left:46%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;background:#9aa9c2;border:1px solid var(--app-track);border-radius:50%}
+.menu{letter-spacing:1px}
+
+.meter{flex:1;min-height:92px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;overflow:hidden}
+.arc{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:210px;height:62px;border-top:1px solid var(--app-blue-2);border-radius:120px 120px 0 0/70px 70px 0 0;opacity:.5}
+.ticks{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:210px;height:60px}
+.ticks i{position:absolute;left:50%;bottom:0;width:1px;height:8px;background:var(--app-blue-2);transform-origin:50% 100%}
+.ticks i.ok{background:var(--app-green-2)}
+.needle{position:absolute;left:50%;bottom:0;width:2px;height:52px;background:var(--app-red);transform-origin:50% 100%;transform:rotate(5deg)}
+.notebig{font-size:34px;font-weight:600;letter-spacing:-.02em;color:var(--app-ink);margin-top:14px;line-height:1}
+.cents{font-family:var(--mono);font-size:11px;color:#20301a;background:var(--app-green-2);padding:1px 7px;border-radius:3px;font-weight:500}
+
+.level{height:8px;background:var(--app-track);position:relative;flex:none;margin:0 0 3px}
+.level i{position:absolute;left:0;top:0;bottom:0;width:38%;background:var(--app-green)}
+.level u{position:absolute;left:38%;top:-3px;bottom:-3px;width:3px;background:#9ec3ef}
+.trace{height:28px;background:var(--app-trace);flex:none;position:relative;overflow:hidden}
+.trace .line{position:absolute;left:0;right:0;top:50%;height:1px;background:#5a8a3a}
+
+.win .muted{opacity:.4}
+.new{position:relative}
+.new::after{content:"";position:absolute;inset:-3px;border:1px dashed var(--rec);pointer-events:none;border-radius:3px}
+.rec-dot{color:var(--app-red)}
+.recbtn{background:#4a2b2e;border:1px solid #7d3f43;color:#ffb3b3;padding:2px 6px;border-radius:2px;white-space:nowrap}
+.recbtn.on{background:#7a3b3b;border-color:#a35151;color:#ffd9d9}
+.timer{font-family:var(--mono);font-variant-numeric:tabular-nums;color:#ffd9d9;font-size:13px;font-weight:500}
+
+/* ============================================================ the drawer */
+.drawer{
+  width:200px;flex:none;background:var(--app-drawer);border-left:1px solid #4a5569;
+  display:flex;flex-direction:column;color:var(--app-ink);font-size:10.5px;line-height:1;
+  box-shadow:0 6px 18px rgba(12,16,24,.35);
+}
+.drawer .dhead{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--app-dim);padding:6px 8px 4px}
+.recpanel{background:#4a3238;border-bottom:1px solid #5d4149;padding:7px 8px;display:flex;flex-direction:column;gap:6px}
+.recpanel .top{display:flex;align-items:center;gap:6px}
+.recpanel .live{width:7px;height:7px;border-radius:50%;background:var(--app-red);flex:none}
+.recpanel .sub{font-family:var(--mono);font-size:9px;color:#d0a9a9;margin-left:auto}
+.wave{height:22px;display:flex;align-items:center;gap:1px;overflow:hidden}
+.wave i{flex:1;background:#b05b5b;min-width:1px;border-radius:1px}
+.wave i.q{background:#6e4a4e}
+.recacts{display:flex;gap:5px}
+.recacts .b{flex:1;text-align:center;background:#5e3c42;border:1px solid #7d4f56;color:#ffd9d9;padding:3px 0;border-radius:2px}
+.recacts .b.stop{background:#7a3b3b;border-color:#a35151}
+
+.toolbar{display:flex;gap:4px;padding:4px 8px 5px;align-items:center}
+.toolbar .sp{flex:1}
+.list{display:flex;flex-direction:column;background:#2d343f;border-top:1px solid #434e63;border-bottom:1px solid #434e63;flex:1;overflow:hidden}
+.li{display:flex;align-items:center;gap:6px;padding:5px 8px;border-bottom:1px solid #3a4352}
+.li:last-child{border-bottom:0}
+.li.sel{background:#45536b}
+.li.fresh{background:#3c4b38}
+.li .nm{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.li .dur{font-family:var(--mono);font-size:9.5px;color:var(--app-dim);font-variant-numeric:tabular-nums}
+.li .pl{color:var(--app-green-2)}
+.dfoot{font-family:var(--mono);font-size:9px;color:var(--app-dim);padding:5px 8px}
+
+/* ---------------------------------------------------------- drawer handle */
+.handleslot{width:14px;flex:none;position:relative;align-self:center;height:72px}
+.hd{position:absolute;left:0;top:50%;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;color:#cbd6e6;font-size:9px}
+/* A — half-disc tab welded to the edge */
+.hd-a{width:11px;height:44px;background:#4a5568;border:1px solid #5a6679;border-left:0;border-radius:0 999px 999px 0}
+/* B — floating stadium */
+.hd-b{width:12px;height:52px;margin-left:3px;background:#4a5568;border:1px solid #5a6679;border-radius:999px;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+/* C — waisted, drawn as a curve */
+.hd-c{width:13px;height:56px}
+.hd-c svg{display:block}
+/* D — grip dots, no body */
+.hd-d{width:12px;height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.hd-d i{width:3px;height:3px;border-radius:50%;background:#8694ab;display:block}
+
+.hzoom{transform:scale(3);transform-origin:left center}
+.zoomwrap{display:flex;align-items:center;gap:34px;padding:10px 0 10px 4px}
+.zoomwrap .cap{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.06em}
+.zoombox{width:60px;height:180px;display:flex;align-items:center;position:relative}
+.zoombox::before{content:"";position:absolute;left:0;top:0;bottom:0;width:9px;background:var(--app-panel)}
+
+/* -------------------------------------------------------------- the sheet */
+.sheet{background:#333c4d;border:1px solid var(--app-edge);padding:9px;display:flex;flex-direction:column;gap:7px}
+.sheet .ttl{font-size:11px;color:var(--app-blue);letter-spacing:.02em}
+.field{background:#2a303c;border:1px solid #5b6a85;padding:4px 6px;color:#fff;font-family:var(--mono);font-size:10.5px;display:flex;justify-content:space-between}
+.field .caret{width:1px;background:#fff;display:inline-block;height:11px}
+.meta{font-family:var(--mono);font-size:9.5px;color:var(--app-dim);display:flex;gap:10px}
+.sheet .acts{display:flex;gap:5px;justify-content:flex-end}
+.act{background:#404b5f;border:1px solid var(--app-edge);padding:3px 9px;border-radius:2px}
+.act.primary{background:#5a7a22;border-color:#7cb518;color:#eaf6d6}
+.act.ghost{background:none;border:1px solid var(--app-edge);color:var(--app-dim)}
+
+/* ------------------------------------------------------------------ table */
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:14px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:var(--surface-2);border-bottom:1px solid var(--rule-strong);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.yes{color:var(--accent);font-weight:600}
+.no{color:var(--rec)}
+tr.rec-row td{background:var(--accent-soft)}
+
+/* ------------------------------------------------------------------- misc */
+.qbox{border:1px solid var(--rule-strong);background:var(--surface);padding:18px 20px;margin-top:20px}
+.qbox h3{margin-bottom:10px}
+.qbox ol,.qbox ul{margin:0;padding-left:20px;font-size:14.5px;color:var(--ink-2)}
+.qbox li{margin:7px 0}
+.qbox li b{color:var(--ink);font-weight:600}
+.flag{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;background:var(--rec-soft);border-left:3px solid var(--rec);padding:14px 18px;margin-top:26px}
+.flag .mark{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.1em;color:var(--rec);padding-top:3px}
+.flag p{margin:0;font-size:14.5px;color:var(--ink-2);max-width:72ch}
+footer{margin-top:60px;border-top:1px solid var(--rule-strong);padding-top:16px;font-size:13px;color:var(--muted)}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="titlerow">
+    <div>
+      <div class="eyebrow">Tuner · 기능 설계</div>
+      <h1>녹음 UI 결정표</h1>
+    </div>
+    <div class="specs">
+      <span>본체 <b>310 × 190</b></span>
+      <span>서랍 <b>+200px</b></span>
+      <span>미터 <b>103px 유지</b></span>
+      <span>always-on-top</span>
+    </div>
+  </div>
+  <p class="lede" style="margin-top:14px">
+    결정 1과 3이 한 장치로 합쳐졌다 — <b>오른쪽으로 열리는 서랍</b> 하나.
+    녹음 버튼이 그걸 열고, 손잡이로도 열린다.
+    <b>여덟 가지가 모두 정해졌고</b>, 아래가 그 설계다.
+  </p>
+
+  <div class="strip">
+    <div class="cell"><span class="k">1 · 컨트롤</span><span class="v">B + 서랍</span><span class="s">컨트롤 줄에 ● 하나, 누르면 옆이 열린다</span></div>
+    <div class="cell"><span class="k">2 · 저장 창</span><span class="v">A · 작은 모달</span><span class="s">제목에 커서가 들어간 채로</span></div>
+    <div class="cell"><span class="k">3 · 목록</span><span class="v">B · 접히는 서랍</span><span class="s">녹음과 무관하게도 열린다</span></div>
+    <div class="cell"><span class="k">4 · 출처</span><span class="v">전용 폴더 + 서명</span><span class="s">인덱스 파일은 두지 않는다</span></div>
+    <div class="cell"><span class="k">5 · 형식</span><span class="v">OGG Vorbis</span><span class="s">10분에 ~7MB, 새 의존성 0</span></div>
+    <div class="cell"><span class="k">6 · 손잡이</span><span class="v">A · 반달 탭</span><span class="s">11 × 44px, 창에 용접된 반원통</span></div>
+    <div class="cell"><span class="k">7 · 단축키</span><span class="v">Alt+R / P / S</span><span class="s">시작 · 일시정지 · 중지</span></div>
+    <div class="cell"><span class="k">8 · 폴더</span><span class="v">음악 ▸ Tuner</span><span class="s">숨은 폴더가 아니라 찾을 수 있는 곳</span></div>
+  </div>
+</header>
+
+<!-- ======================================================= 서랍의 세 상태 -->
+<section>
+  <div class="sechead"><span class="secno">결정 1+3</span><h2>서랍 — 세 가지 상태</h2></div>
+  <p class="secsub">
+    본체는 언제나 310×190 그대로다. 서랍은 그 오른쪽에 <b>덧붙는</b> 것이라
+    미터는 1픽셀도 잃지 않는다. 열고 닫는 방법이 둘이라는 게 핵심 —
+    <b>녹음 버튼</b>은 녹음을 시작하면서 열고, <b>손잡이</b>는 녹음과 무관하게 목록만 연다.
+  </p>
+
+  <div class="flow">
+
+    <!-- 1 -->
+    <div class="step">
+      <div class="step-head"><span class="step-key">상태 1</span><h3>접힘 — 평소</h3></div>
+      <div class="stage tall">
+        <div class="winshell">
+          <div class="win">
+            <div class="titlebar"><span>Tuner</span><span>— □ ✕</span></div>
+            <div class="r"><span class="lab muted">A4</span><span class="spin muted">442 Hz</span><span class="combo muted">마이크 ▾</span><span class="chk muted"><i></i>Pin</span><span class="recbtn new"><span class="rec-dot">●</span></span></div>
+            <div class="r metro muted"><span class="btn">▶</span><span class="btn menu">≡</span><span class="btn">−</span><span class="bpm">110</span><span class="btn">+</span><span class="vol"><i></i><u></u></span></div>
+            <div class="meter muted">
+              <div class="arc"></div>
+              <div class="ticks"><i style="transform:rotate(-40deg)"></i><i style="transform:rotate(-20deg)"></i><i class="ok" style="transform:rotate(0)"></i><i style="transform:rotate(20deg)"></i><i style="transform:rotate(40deg)"></i><div class="needle"></div></div>
+              <div class="notebig">A</div><div class="cents">+4 ¢</div>
+            </div>
+            <div class="level muted"><i></i><u></u></div>
+            <div class="trace muted"><div class="line"></div></div>
+          </div>
+          <div class="handleslot"><div class="hd hd-a new">‹</div></div>
+        </div>
+      </div>
+      <p class="note">지금 창과 똑같다. 달라진 것은 둘 — 컨트롤 줄 끝의 <b>● 버튼</b>(<code class="m">Alt+R</code>), 그리고 오른쪽 가장자리에 붙은 <b>손잡이</b>(<code class="m">Alt+L</code>). 둘 다 평소에 세로 공간을 전혀 쓰지 않는다.</p>
+      <p class="cost"><b>창</b> 310 × 190 (지금과 동일) · <b>미터</b> <span class="good">103px 그대로</span></p>
+    </div>
+
+    <!-- 2 -->
+    <div class="step">
+      <div class="step-head"><span class="step-key">상태 2</span><h3>손잡이로 펼침 — 목록</h3></div>
+      <div class="stage tall">
+        <div class="winshell">
+          <div class="win">
+            <div class="titlebar"><span>Tuner</span><span>— □ ✕</span></div>
+            <div class="r muted"><span class="lab">A4</span><span class="spin">442 Hz</span><span class="combo">마이크 ▾</span><span class="chk"><i></i>Pin</span><span class="recbtn">●</span></div>
+            <div class="r metro muted"><span class="btn">▶</span><span class="btn menu">≡</span><span class="btn">−</span><span class="bpm">110</span><span class="btn">+</span><span class="vol"><i></i><u></u></span></div>
+            <div class="meter muted">
+              <div class="arc"></div>
+              <div class="ticks"><i style="transform:rotate(-40deg)"></i><i style="transform:rotate(-20deg)"></i><i class="ok" style="transform:rotate(0)"></i><i style="transform:rotate(20deg)"></i><i style="transform:rotate(40deg)"></i><div class="needle"></div></div>
+              <div class="notebig">A</div><div class="cents">+4 ¢</div>
+            </div>
+            <div class="level muted"><i></i><u></u></div>
+            <div class="trace muted"><div class="line"></div></div>
+          </div>
+          <div class="drawer new">
+            <div class="dhead">녹음 12개</div>
+            <div class="toolbar"><span class="btn">▶</span><span class="btn">이름</span><span class="btn">삭제</span><span class="sp"></span><span class="btn">폴더</span></div>
+            <div class="list">
+              <div class="li sel"><span class="pl">▶</span><span class="nm">바흐 프렐류드</span><span class="dur">02:04</span></div>
+              <div class="li"><span class="pl" style="opacity:.3">▶</span><span class="nm">2026-10-01 09:12</span><span class="dur">00:48</span></div>
+              <div class="li"><span class="pl" style="opacity:.3">▶</span><span class="nm">스케일 G장조</span><span class="dur">05:30</span></div>
+              <div class="li"><span class="pl" style="opacity:.3">▶</span><span class="nm">2026-09-28 19:03</span><span class="dur">01:17</span></div>
+              <div class="li"><span class="pl" style="opacity:.3">▶</span><span class="nm">비브라토 연습</span><span class="dur">03:41</span></div>
+            </div>
+            <div class="dfoot">38.4 MB · 음악 ▸ Tuner</div>
+          </div>
+          <div class="handleslot"><div class="hd hd-a">›</div></div>
+        </div>
+      </div>
+      <p class="note">녹음하지 않아도 열린다 — 지난 녹음을 듣거나, 이름을 고치거나, 지우려고. 본체는 그대로 돌아가고 있어서 <b>듣는 동안에도 미터가 산다</b>.</p>
+      <p class="cost"><b>창</b> 510 × 190 · <b>본체 영향</b> <span class="good">없음</span><br>접힘 상태는 <code class="m">QSettings</code> 에 남는다</p>
+    </div>
+
+    <!-- 3 -->
+    <div class="step">
+      <div class="step-head"><span class="step-key">상태 3</span><h3>● 를 눌러 펼침 — 녹음 중</h3></div>
+      <div class="stage tall">
+        <div class="winshell">
+          <div class="win">
+            <div class="titlebar"><span>Tuner</span><span>— □ ✕</span></div>
+            <div class="r muted"><span class="lab">A4</span><span class="spin">442 Hz</span><span class="combo">마이크 ▾</span><span class="chk"><i></i>Pin</span><span class="recbtn on">●</span></div>
+            <div class="r metro muted"><span class="btn">▶</span><span class="btn menu">≡</span><span class="btn">−</span><span class="bpm">110</span><span class="btn">+</span><span class="vol"><i></i><u></u></span></div>
+            <div class="meter muted">
+              <div class="arc"></div>
+              <div class="ticks"><i style="transform:rotate(-40deg)"></i><i style="transform:rotate(-20deg)"></i><i class="ok" style="transform:rotate(0)"></i><i style="transform:rotate(20deg)"></i><i style="transform:rotate(40deg)"></i><div class="needle"></div></div>
+              <div class="notebig">A</div><div class="cents">+4 ¢</div>
+            </div>
+            <div class="level muted"><i></i><u></u></div>
+            <div class="trace muted"><div class="line"></div></div>
+          </div>
+          <div class="drawer">
+            <div class="recpanel new">
+              <div class="top"><span class="live"></span><span class="timer">01:24</span><span class="sub">Vorbis · 1.0 MB</span></div>
+              <div class="wave"><i style="height:30%"></i><i style="height:62%"></i><i style="height:45%"></i><i style="height:88%"></i><i style="height:55%"></i><i style="height:78%"></i><i style="height:35%"></i><i style="height:66%"></i><i style="height:95%"></i><i style="height:50%"></i><i style="height:72%"></i><i style="height:40%"></i><i style="height:84%"></i><i style="height:58%"></i><i style="height:30%"></i><i style="height:70%"></i><i style="height:48%"></i><i class="q" style="height:22%"></i><i class="q" style="height:14%"></i><i class="q" style="height:9%"></i></div>
+              <div class="recacts"><span class="b">❚❚ <span style="opacity:.65">Alt+P</span></span><span class="b stop">■ <span style="opacity:.65">Alt+S</span></span></div>
+            </div>
+            <div class="list" style="flex:1">
+              <div class="li"><span class="pl" style="opacity:.3">▶</span><span class="nm">바흐 프렐류드</span><span class="dur">02:04</span></div>
+              <div class="li"><span class="pl" style="opacity:.3">▶</span><span class="nm">2026-10-01 09:12</span><span class="dur">00:48</span></div>
+              <div class="li"><span class="pl" style="opacity:.3">▶</span><span class="nm">스케일 G장조</span><span class="dur">05:30</span></div>
+            </div>
+            <div class="dfoot">저장하면 맨 위에 붙습니다</div>
+          </div>
+          <div class="handleslot"><div class="hd hd-a">›</div></div>
+        </div>
+      </div>
+      <p class="note">● 또는 <code class="m">Alt+R</code> 을 누르면 서랍이 <b>자동으로 열리면서</b> 녹음이 시작된다. 시간·파형·일시정지·중지가 전부 그 안에 있고, 아래로는 기존 목록이 이어진다 — 방금 만든 것이 어디로 가는지 보인다.</p>
+      <p class="cost"><b>창</b> 510 × 190 · 중지 → 저장 모달(아래)<br>버튼에 단축키를 적어 둔다 — 손이 악기에 있을 때 쓰라고 만든 것</p>
+    </div>
+
+  </div>
+
+  <div class="flag">
+    <div class="mark">주의</div>
+    <div>
+      <p><b>always-on-top 창이 갑자기 넓어지는 것</b>은 그 자체로 비용이다. 악보 옆에 세워두는 물건이라,
+      서랍이 열리면서 악보를 가릴 수 있다. 그래서 서랍은 <b>왼쪽이 아니라 오른쪽으로만</b> 열리고
+      (본체 위치가 고정된다), 접힘 상태를 기억한다. 화면 오른쪽 끝에 붙여 쓰는 경우를 대비해
+      공간이 모자라면 창 전체가 왼쪽으로 밀리게 하는 처리가 구현 때 하나 필요하다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================================= 손잡이 고르기 -->
+<section>
+  <div class="sechead"><span class="secno">결정 6</span><h2>서랍 손잡이 — 반달 탭</h2></div>
+  <p class="secsub">
+    세로로 길고, 각진 사각형은 아닌 것. 폭은 <b>11~13px</b> 밖에 못 쓴다 — 그 이상은 접었을 때도
+    계속 자리를 먹는다. 네 가지를 실제 크기와 3배 확대로 비교해 <b>A 반달 탭으로 정했다</b>.
+    나머지 셋은 왜 아니었는지와 함께 남겨둔다.
+  </p>
+
+  <div class="flow">
+
+    <div class="step">
+      <div class="step-head"><span class="step-key">손잡이 A</span><h3>반달 탭</h3><span class="pick">채택</span></div>
+      <div class="stage">
+        <div class="zoomwrap">
+          <div style="display:flex;align-items:center">
+            <div style="width:26px;height:92px;background:var(--app-panel)"></div>
+            <div class="handleslot" style="height:92px"><div class="hd hd-a">‹</div></div>
+          </div>
+          <div class="zoombox"><div class="hd-a hzoom" style="margin-left:9px"></div></div>
+        </div>
+      </div>
+      <p class="note">창 가장자리에 <b>용접된</b> 반원통. 왼쪽은 창과 한 몸이고 오른쪽만 둥글다 — "이건 창에 달린 것이고, 저쪽으로 열린다"를 모양 하나로 말한다. 11px 에서도 반원이 또렷하다.</p>
+      <p class="cost"><b>11 × 44px</b> · <span class="good">가장 또렷함</span> · 흔한 만큼 설명이 필요 없다</p>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-key">손잡이 B</span><h3>떠 있는 알약</h3></div>
+      <div class="stage">
+        <div class="zoomwrap">
+          <div style="display:flex;align-items:center">
+            <div style="width:26px;height:92px;background:var(--app-panel)"></div>
+            <div class="handleslot" style="height:92px"><div class="hd hd-b">‹</div></div>
+          </div>
+          <div class="zoombox"><div class="hd-b hzoom" style="margin-left:14px"></div></div>
+        </div>
+      </div>
+      <p class="note">창에서 3px 떨어져 <b>떠 있는</b> 알약. 그림자가 있어 "집어서 끌 수 있는 물건"으로 읽힌다 — 레벨 바의 둥근 손잡이와 같은 어법이다. 다만 창과 분리돼 보여 "무엇에 달린 것인지"가 약간 덜 분명하다.</p>
+      <p class="cost"><b>12 × 52px</b> + 여백 3 = <b>15px</b> · 그림자 필요</p>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-key">손잡이 C</span><h3>잘록한 허리</h3></div>
+      <div class="stage">
+        <div class="zoomwrap">
+          <div style="display:flex;align-items:center">
+            <div style="width:26px;height:92px;background:var(--app-panel)"></div>
+            <div class="handleslot" style="height:92px">
+              <div class="hd hd-c">
+                <svg width="13" height="56" viewBox="0 0 13 56" aria-hidden="true">
+                  <path d="M0 0 H7 Q12 0 11 6 C9 16 7 20 7 28 C7 36 9 40 11 50 Q12 56 7 56 H0 Z" fill="#4a5568" stroke="#5a6679" stroke-width="1"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="zoombox">
+            <div class="hzoom" style="margin-left:9px">
+              <svg width="13" height="56" viewBox="0 0 13 56" aria-hidden="true">
+                <path d="M0 0 H7 Q12 0 11 6 C9 16 7 20 7 28 C7 36 9 40 11 50 Q12 56 7 56 H0 Z" fill="#4a5568" stroke="#5a6679" stroke-width="1"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="note">가운데가 손가락 하나만큼 들어간 모양. 위아래가 벌어지고 허리가 잘록해서 <b>잡는 곳</b>이라는 느낌이 가장 강하다. 대신 11px 폭에서 허리의 깊이는 <b>4px</b>뿐이라, 확대해서 보면 예쁘고 실제 크기에서는 은은하다.</p>
+      <p class="cost"><b>13 × 56px</b> · SVG 한 개<br><span class="bad">실제 크기에선 곡선이 거의 안 보임</span></p>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-key">손잡이 D</span><h3>그립 점</h3></div>
+      <div class="stage">
+        <div class="zoomwrap">
+          <div style="display:flex;align-items:center">
+            <div style="width:26px;height:92px;background:var(--app-panel)"></div>
+            <div class="handleslot" style="height:92px"><div class="hd hd-d"><i></i><i></i><i></i></div></div>
+          </div>
+          <div class="zoombox"><div class="hd-d hzoom" style="margin-left:9px"><i></i><i></i><i></i></div></div>
+        </div>
+      </div>
+      <p class="note">몸통 없이 점 세 개. 가장 조용하고 창을 하나도 안 어지럽힌다. 그런데 이 앱의 손잡이 어법과 어긋난다 — 레벨 바에서 "1px 눈금은 <b>여기가 문턱</b>이라고만 말하고 <b>짚어서 끌 수 있다</b>고는 말하지 않는다"고 판단해 일부러 손잡이를 세운 전례가 있다.</p>
+      <p class="cost"><b>12 × 44px</b> · <span class="bad">발견되기 어려움</span> — 같은 이유로 한 번 기각된 적 있는 방향</p>
+    </div>
+
+  </div>
+
+  <div class="qbox">
+    <h3>채택: A 반달 탭 — 구현 명세</h3>
+    <ul>
+      <li><b>크기</b> <code class="m">11 × 44px</code>, 본체 오른쪽 가장자리 <b>세로 중앙</b>에 붙는다.
+        왼쪽 변은 창과 맞닿아 테두리가 없고, 오른쪽만 <code class="m">border-radius</code> 로 반원
+        (Qt 로는 <code class="m">QPainterPath</code> 에 <code class="m">arcTo</code> 하나).</li>
+      <li><b>색</b> 평소 <code class="m">#4a5568</code> / 테두리 <code class="m">#5a6679</code>,
+        <b>마우스를 올리면</b> 레벨 바 손잡이와 같이 밝아진다(<code class="m">#cfe2ff</code> 계열).
+        이미 있는 호버 말풍선(<code class="m">hover_readout.py</code>)과 같은 어법.</li>
+      <li><b>표시</b> 접힘 <code class="m">‹</code> / 펼침 <code class="m">›</code>.
+        접힘 상태는 A4·장치·BPM 과 같이 <code class="m">QSettings</code> 에 남는다.</li>
+      <li><b>히트 영역</b>은 그린 것보다 넓게 — 11px 폭을 정확히 찍게 하지 않는다.
+        좌우로 4px 씩 여유를 두면 19px 이 되고, 그래도 접힘 상태의 창 폭에는 영향이 없다(손잡이는 창 밖).</li>
+    </ul>
+  </div>
+
+  <div class="qbox">
+    <h3>고르지 않은 셋, 그리고 이유</h3>
+    <ul>
+      <li><b>B 떠 있는 알약</b> — 그림자로 "집어 끄는 물건"이 되지만, 창과 떨어져 있어
+        <b>무엇에 달린 것인지</b>가 덜 분명하다. 서랍 손잡이는 창에 속해야 한다.</li>
+      <li><b>C 잘록한 허리</b> — 확대하면 가장 유려하다. 다만 11px 폭에서 허리 깊이가 <b>4px</b> 뿐이라
+        실제 크기에선 거의 직선으로 보인다. 높이를 72px 로 키우면 살아나지만,
+        그 크기가 이 창에서 손잡이 하나에 줄 만한 존재감인지는 다른 문제다.
+        <b>나중에 창이 커지면 다시 볼 가치가 있다.</b></li>
+      <li><b>D 그립 점</b> — 이 앱이 이미 한 번 기각한 방향이다. 레벨 바에서
+        "1px 눈금은 <b>여기가 문턱</b>이라고만 말하고 <b>짚어서 끌 수 있다</b>고는 말하지 않는다"고 판단해
+        손잡이를 세운 전례가 있다(<code>docs/pitch-pipeline.md</code>).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================================= 저장 모달 -->
+<section>
+  <div class="sechead"><span class="secno">결정 2</span><h2>중지하면 뜨는 저장 창 — 확정</h2></div>
+  <p class="secsub">제목 기본값은 날짜·시각, 커서가 그 안에 들어간 채로 뜬다. 그대로 Enter 면 기본 이름, 타이핑하면 덮어쓴다.</p>
+
+  <div class="flow">
+    <div class="step">
+      <div class="step-head"><span class="step-key">저장</span><h3>작은 모달</h3></div>
+      <div class="stage">
+        <div class="win" style="width:290px">
+          <div class="titlebar"><span>녹음 저장</span><span>✕</span></div>
+          <div class="sheet">
+            <div class="ttl">제목</div>
+            <div class="field"><span>2026-10-03 21:47<span class="caret"></span></span><span style="color:#7d8ba3">.ogg</span></div>
+            <div class="meta"><span>길이 03:12</span><span>2.2 MB</span><span>A4 442Hz</span></div>
+            <div class="acts"><span class="act ghost">버리기</span><span class="act">다시 듣기</span><span class="act primary">저장</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="note">메트로놈 "소리 고르기" 창과 같은 구조(<code class="m">QDialog</code> + 버튼박스). Enter 저장, Esc 는 버리기 전에 한 번 더 묻는다 — 연주는 되돌릴 수 없으니까.</p>
+      <p class="cost"><b>Enter</b> 저장 · <b>Esc</b> 확인 후 버리기 · 저장 후 서랍 목록 맨 위에 추가</p>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-key">직후</span><h3>저장한 다음</h3></div>
+      <div class="stage tall">
+        <div class="winshell">
+          <div class="win" style="width:200px">
+            <div class="titlebar"><span>Tuner</span><span>— □ ✕</span></div>
+            <div class="meter muted" style="min-height:120px"><div class="arc" style="width:150px"></div><div class="notebig">A</div><div class="cents">+4 ¢</div></div>
+            <div class="level muted"><i></i><u></u></div>
+          </div>
+          <div class="drawer">
+            <div class="dhead">녹음 13개</div>
+            <div class="toolbar"><span class="btn">▶</span><span class="btn">이름</span><span class="btn">삭제</span><span class="sp"></span><span class="btn">폴더</span></div>
+            <div class="list">
+              <div class="li fresh new"><span class="pl">▶</span><span class="nm">2026-10-03 21:47</span><span class="dur">03:12</span></div>
+              <div class="li"><span class="pl" style="opacity:.3">▶</span><span class="nm">바흐 프렐류드</span><span class="dur">02:04</span></div>
+              <div class="li"><span class="pl" style="opacity:.3">▶</span><span class="nm">2026-10-01 09:12</span><span class="dur">00:48</span></div>
+              <div class="li"><span class="pl" style="opacity:.3">▶</span><span class="nm">스케일 G장조</span><span class="dur">05:30</span></div>
+            </div>
+            <div class="dfoot">40.6 MB · 음악 ▸ Tuner</div>
+          </div>
+        </div>
+      </div>
+      <p class="note">모달이 닫히면 방금 저장한 것이 목록 맨 위에 <b>초록으로 잠깐</b> 켜진 채 들어온다. 어디로 갔는지 묻지 않아도 되게.</p>
+      <p class="cost">본체는 왼쪽에 잘라 그린 것 — 실제로는 310px 그대로</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================================= 결정 4 · 5 -->
+<section>
+  <div class="sechead"><span class="secno">결정 4+5</span><h2>출처와 형식 — 확정</h2></div>
+  <p class="secsub">둘 다 맡겨주신 대로 정했다. 요지는 <b>파일 자체가 진실</b>이고, <b>용량은 분당 0.7MB</b>.</p>
+
+  <div class="qbox" style="margin-top:0">
+    <h3>출처 — 전용 폴더 + 파일 안의 서명, 인덱스 파일은 두지 않는다</h3>
+    <ol>
+      <li><b>쓸 때</b> — 음악 폴더의 <code class="m">Tuner/</code> (결정 8)에 저장하면서 Vorbis 주석 필드에
+        <code class="m">SOFTWARE=tuner</code>, 녹음 시각, 그때의 <b>A4 기준</b>을 함께 적는다.</li>
+      <li><b>읽을 때</b> — 폴더를 훑어 <b>서명이 있는 파일만</b> 목록에 올린다.
+        사용자가 아무 음악 파일을 복사해 넣어도 서명이 없으니 안 보인다.</li>
+      <li><b>인덱스를 안 만드는 이유</b> — 파일이 진실이면 동기화할 것이 없다. 밖에서 지우면 그냥 사라지고,
+        다른 곳으로 옮기면 서명이 따라간다. 목록이 느려지면 그때 캐시를 붙인다.</li>
+      <li><b>덤</b> — 서명에 A4 기준이 남으니 그 녹음을 나중에 다시 분석할 때 그때 기준으로 채점할 수 있다.
+        이미 있는 <code class="m">trace</code> · <code class="m">annotate</code> 가 그대로 붙는다.</li>
+    </ol>
+  </div>
+
+  <div class="tablewrap" style="margin-top:22px">
+    <table>
+      <thead><tr><th>형식</th><th>10분</th><th>1시간</th><th>판단</th></tr></thead>
+      <tbody>
+        <tr><td><b>WAV</b> <span class="m">PCM_16</span></td><td class="n">53 MB</td><td class="n">318 MB</td><td>리포트가 쓰는 것. 연습 녹음엔 과하다</td></tr>
+        <tr><td><b>FLAC</b></td><td class="n">~27 MB</td><td class="n">~160 MB</td><td>무손실이지만 여전히 무겁다</td></tr>
+        <tr class="rec-row"><td><b>OGG Vorbis</b> <span class="m">q4 · 모노</span></td><td class="n">~7 MB</td><td class="n">~42 MB</td><td><b>채택.</b> 주석 필드에 서명이 들어가고, 새 의존성 0</td></tr>
+        <tr><td><b>Opus</b></td><td class="n">~4 MB</td><td class="n">~24 MB</td><td>더 작지만 옛 플레이어에서 안 열릴 수 있다</td></tr>
+        <tr><td><b>MP3</b></td><td class="n">~7 MB</td><td class="n">~42 MB</td><td>크기는 같고, 태그가 ID3 라 서명 방식이 하나 더 늘어난다</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:14px;font-size:14px;color:var(--muted);max-width:70ch">
+    모노 44.1kHz 기준 (WAV 는 <span class="m">44100 × 2 byte</span> 정확한 산수, 나머지는 공칭 비트레이트).
+    입력이 원래 모노라 스테레오로 부풀릴 이유가 없다. <b>형식 선택은 UI에 두지 않는다</b> —
+    검출기 선택을 UI에서 뺀 것과 같은 이유로, 고를 이유가 없는 선택지는 설정이 아니라 결정이다.
+  </p>
+</section>
+
+<!-- ============================================================== 단축키 -->
+<section>
+  <div class="sechead"><span class="secno">결정 7</span><h2>단축키 — 수정자가 기능군을 가른다</h2></div>
+  <p class="secsub">
+    악기를 든 채로 한 손만 뻗어 누른다. 그래서 <b>두 키를 넘지 않고</b>, 세 동작이 한 줄에 모여 있다.
+    기존 개발용 키와 섞이지 않도록 <b>수정자로 갈랐다</b> — <code class="m">Ctrl</code> 은 리포트(개발용),
+    <code class="m">Alt</code> 는 녹음(연주자용).
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>키</th><th>동작</th><th>누르면</th><th>왜 이 키</th></tr></thead>
+      <tbody>
+        <tr class="rec-row"><td class="n"><b>Alt + R</b></td><td>녹음 시작</td><td>서랍이 열리고 녹음이 시작된다 (● 버튼과 같은 동작)</td><td><b>R</b>ecord</td></tr>
+        <tr class="rec-row"><td class="n"><b>Alt + P</b></td><td>일시정지 ⇄ 재개</td><td>같은 키로 토글. 멈춘 동안 시간이 서고 파형이 흐려진다</td><td><b>P</b>ause</td></tr>
+        <tr class="rec-row"><td class="n"><b>Alt + S</b></td><td>중지</td><td>녹음을 끝내고 저장 창을 띄운다</td><td><b>S</b>top</td></tr>
+        <tr><td class="n">Alt + L</td><td>서랍 열기/닫기</td><td>녹음과 무관하게 목록만. 손잡이와 같은 동작</td><td><b>L</b>ist</td></tr>
+        <tr><td class="n">Ctrl + R</td><td>리포트 <span class="m">(기존)</span></td><td>직전 10초를 소급 저장 — 개발용, 그대로 둔다</td><td>이미 문서화됨</td></tr>
+        <tr><td class="n">Ctrl + Shift + R</td><td>리포트 세션 <span class="m">(이동)</span></td><td>지금의 <code class="m">Ctrl+L</code> 에서 옮긴다 — <code class="m">Alt+L</code> 과 헷갈리지 않게</td><td>Ctrl 군으로 통일</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="qbox">
+    <h3>이 배치의 근거와 하나 남은 확인</h3>
+    <ul>
+      <li><b>세 동작이 한 줄</b> — R · P · S 가 키보드에서 멀지 않고, 전부 왼손 하나로 닿는다.
+        DAW 들의 Space/Return 관습도 봤지만, 단독 키는 나중에 창에 입력 칸이 하나라도 생기면 깨진다.</li>
+      <li><b>Ctrl+R 은 안 건드린다</b> — "이상했던 순간은 이미 지나갔다"가 그 키의 존재 이유라
+        가장 빠른 자리를 지켜야 한다. 대신 같은 개발용인 세션 기록을
+        <code class="m">Ctrl+L</code> → <code class="m">Ctrl+Shift+R</code> 로 옮겨 Ctrl 군으로 모은다.</li>
+      <li><b>녹음 중이 아닐 때</b> <code class="m">Alt+P</code> · <code class="m">Alt+S</code> 는 아무 일도 하지 않는다.
+        비활성 상태에서 경고를 띄우지 않는다 — 이 앱은 그런 식으로 말을 걸지 않는다.</li>
+      <li><b>확인할 것</b>: macOS 에서 <code class="m">Alt</code> 는 Option 이고 텍스트 입력 중에는 특수문자를 낸다.
+        본체 창에는 입력 칸이 없어(A4 는 읽기 전용, 템포는 별도 다이얼로그) 문제가 없을 것으로 보지만,
+        CI 매트릭스에 macOS 가 있으니 <b>구현 때 실제로 확인</b>한다.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================================== 폴더 -->
+<section>
+  <div class="sechead"><span class="secno">결정 8</span><h2>폴더 — 숨기지 않는다</h2></div>
+  <p class="secsub">
+    리포트는 <code class="m">~/.tuner/reports/</code> 라는 <b>숨은 폴더</b>에 있다. 그건 개발용 증거라
+    사용자가 찾을 일이 없기 때문이다. 녹음은 반대다 — <b>사용자 본인의 연주</b>이고,
+    메일에 첨부하거나 선생님께 보내거나 백업할 물건이다. 숨은 폴더에 두면 안 된다.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>OS</th><th>경로</th><th>얻는 것</th></tr></thead>
+      <tbody>
+        <tr><td>Windows</td><td class="n">C:\Users\&lt;이름&gt;\Music\Tuner\</td><td>탐색기 "음악"에 바로 보인다. OneDrive 동기화도 자동으로 걸린다</td></tr>
+        <tr><td>macOS</td><td class="n">~/Music/Tuner/</td><td>Finder 사이드바의 "음악"</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="qbox">
+    <h3>구현 메모</h3>
+    <ul>
+      <li>경로는 직접 조립하지 않고 <code class="m">QStandardPaths.writableLocation(MusicLocation)</code> 로 묻는다 —
+        사용자가 음악 폴더를 다른 드라이브로 옮겨뒀어도 따라간다. 없으면
+        <code class="m">~/.tuner/recordings/</code> 로 떨어진다.</li>
+      <li>테스트가 진짜 음악 폴더를 건드리지 않도록 환경변수 하나로 덮어쓴다 —
+        <code class="m">TUNER_RECORDINGS_DIR</code>. 리포트 쪽이 이미 쓰는
+        <code class="m">TUNER_REPORTS_DIR</code> 과 같은 방식이다.</li>
+      <li><b>이 선택이 결정 4를 더 중요하게 만든다</b> — 사람이 드나드는 폴더라 다른 음악 파일이
+        섞일 가능성이 실제로 높다. 그래서 목록은 폴더가 아니라 <b>파일 안의 서명</b>으로 거른다.
+        서명 없는 파일은 그 폴더에 있어도 안 보인다.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- =============================================================== 다음 -->
+<section>
+  <div class="sechead"><span class="secno">다음</span><h2>만들기 전에 할 일</h2></div>
+  <div class="qbox" style="margin-top:0">
+    <ol>
+      <li><b>이름과 키 정리</b> — 기존 <code class="m">FieldCapture</code>(<code class="m">● 기록</code>,
+        <code class="m">~/.tuner/reports/</code>)를 <b>"리포트"</b>로, 새 기능을 <b>"녹음"</b>으로.
+        함께 <code class="m">Ctrl+L</code> → <code class="m">Ctrl+Shift+R</code> 로 옮긴다(결정 7).
+        버튼·단축키·README·문서가 전부 걸려 있어 코드보다 먼저 할 일이다.</li>
+      <li><b>정답 데이터 먼저</b> — <code>docs/process/ground-truth.md</code> 규칙대로,
+        아는 신호를 녹음해 다시 읽었을 때 같은 신호인지 재는 하네스부터. 이 영역은
+        정답이 산수로 확정돼서 주석기가 필요 없다 — 메트로놈과 같은 종류다.</li>
+      <li><b>불변식 후보</b> (<code class="m">tests/invariants/</code> 감):
+        저장한 파일의 길이 = 녹음한 시간, <b>일시정지한 구간은 결과에 없다</b>,
+        일시정지를 몇 번 하든 이어붙인 길이가 맞는다,
+        서명 없는 파일은 목록에 안 뜬다, 손실 압축을 거쳐도 <b>검출되는 피치는 ±2¢ 안</b>.
+        전부 튜닝과 무관하게 참이다.</li>
+      <li><b>구조</b> — 녹음은 <code class="m">app/</code> 의 조립이고, 서랍은 위젯이다.
+        <code class="m">core/</code> 는 녹음을 몰라야 한다 — 벽 1이 그걸 자동으로 잡는다.</li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  목업은 실제 크기(본체 310 × 190, 서랍 200) · 색은 앱의 실제 팔레트
+  <span class="m">#3b4252 / #7cb518 / #e03131</span> · 손잡이는 실제 크기와 3배 확대를 나란히
+</footer>
+
+</div>
