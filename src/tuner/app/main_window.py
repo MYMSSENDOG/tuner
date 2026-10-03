@@ -41,19 +41,25 @@ from tuner.core.metronome import CLICK_AMPLITUDE, DEFAULT_BPM, DEFAULT_SOUND
 # geometry.
 GEOMETRY_KEY = "geometry_v6"
 
+# The two report keys. Ctrl is the *report* family (developer-facing: audio
+# plus what the meter showed, for turning a defect into a fixture); the
+# player-facing recorder gets its own modifier so the two never look alike.
+#
 # One key, no menu: the moment worth reporting has already passed when the
 # player reaches for the mouse. Undiscoverable on purpose - the UI stays a
 # meter (README documents it), and nothing about it costs anything until used.
 REPORT_SHORTCUT = "Ctrl+R"
 # Ctrl+R is for the moment already gone. This is the other half: sit down,
-# press record, play the thing that misbehaves, press it again. Nothing is
+# press it, play the thing that misbehaves, press it again. Nothing is
 # dropped in between, so the whole episode is on disk in one file.
-RECORD_SHORTCUT = "Ctrl+L"
-# === UI switch: set True to put the session-record button back on the
+# Was Ctrl+L. Moved so that this stays visibly part of the Ctrl report family
+# and cannot be mistaken for the recorder's own keys.
+REPORT_SESSION_SHORTCUT = "Ctrl+Shift+R"
+# === UI switch: set True to put the session-report button back on the
 # === controls row. Off by default - the row is the window's width floor,
 # === and the capture layer underneath it stays live either way (Ctrl+R,
 # === FieldCapture, tools/promote). Flip this for a logging session.
-RECORD_BUTTON_ENABLED = False
+REPORT_SESSION_BUTTON_ENABLED = False
 
 
 def enable_ctrl_c(window: QMainWindow) -> QTimer:
@@ -70,8 +76,8 @@ def enable_ctrl_c(window: QMainWindow) -> QTimer:
     return timer
 
 
-RECORD_IDLE_TEXT = "● 기록"
-RECORD_ACTIVE_TEXT = "■ 기록 중 {}"
+SESSION_IDLE_TEXT = "● 리포트"
+SESSION_ACTIVE_TEXT = "■ 리포트 중 {}"
 
 
 class _ReadingBridge(QObject):
@@ -159,16 +165,16 @@ class MainWindow(QMainWindow):
         self._pin_check.toggled.connect(self._on_pin_toggled)
         controls.addWidget(self._pin_check)
 
-        self._record_button = QPushButton(RECORD_IDLE_TEXT)
-        self._record_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._record_button.clicked.connect(self.toggle_recording)
-        self._record_timer = QTimer(self)
-        self._record_timer.setInterval(500)
-        self._record_timer.timeout.connect(self._tick_recording)
-        if RECORD_BUTTON_ENABLED:
-            controls.addWidget(self._record_button)
-            self._record_shortcut = QShortcut(QKeySequence(RECORD_SHORTCUT), self)
-            self._record_shortcut.activated.connect(self.toggle_recording)
+        self._session_button = QPushButton(SESSION_IDLE_TEXT)
+        self._session_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._session_button.clicked.connect(self.toggle_report_session)
+        self._session_timer = QTimer(self)
+        self._session_timer.setInterval(500)
+        self._session_timer.timeout.connect(self._tick_session)
+        if REPORT_SESSION_BUTTON_ENABLED:
+            controls.addWidget(self._session_button)
+            self._session_shortcut = QShortcut(QKeySequence(REPORT_SESSION_SHORTCUT), self)
+            self._session_shortcut.activated.connect(self.toggle_report_session)
 
         central = QWidget()
         layout = QVBoxLayout(central)
@@ -212,11 +218,11 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         if self._capture.recording:  # never drop what was being recorded
-            self._record_timer.stop()
+            self._session_timer.stop()
             try:
-                print(f"기록 저장됨: {self.toggle_recording()}")
+                print(f"리포트 저장됨: {self.toggle_report_session()}")
             except (RuntimeError, OSError) as error:
-                print(f"기록 저장 실패: {error}")
+                print(f"리포트 저장 실패: {error}")
         self._save_settings()
         self._metronome_bar.stop()  # the output device outlives nothing
         self._engine.stop()
@@ -306,17 +312,17 @@ class MainWindow(QMainWindow):
         self._flash(f"직전 {RING_SECONDS:g}초 저장됨 - {directory}")
         return directory
 
-    def toggle_recording(self) -> Path | None:
-        """The 기록 button: start keeping everything, or stop and write it."""
+    def toggle_report_session(self) -> Path | None:
+        """The 리포트 button: start keeping everything, or stop and write it."""
         if not self._capture.recording:
             self._capture.start_recording()
-            self._record_button.setText(RECORD_ACTIVE_TEXT.format("0:00"))
-            self._record_timer.start()
-            self._flash("기록 시작 — 다시 누르면 그 사이 전 구간이 저장된다")
+            self._session_button.setText(SESSION_ACTIVE_TEXT.format("0:00"))
+            self._session_timer.start()
+            self._flash("리포트 기록 시작 — 다시 누르면 그 사이 전 구간이 저장된다")
             return None
 
-        self._record_timer.stop()
-        self._record_button.setText(RECORD_IDLE_TEXT)
+        self._session_timer.stop()
+        self._session_button.setText(SESSION_IDLE_TEXT)
         try:
             directory = self._capture.save_recording(
                 detector=self._engine.detector_name,
@@ -324,19 +330,19 @@ class MainWindow(QMainWindow):
                 extra={"device": self._device_combo.currentText()},
             )
         except (RuntimeError, OSError) as error:
-            self._flash(f"기록 저장 실패: {error}", ok=False)
+            self._flash(f"리포트 저장 실패: {error}", ok=False)
             return None
         note = "장치가 바뀌어 중간에 끊겼다 — " if self._capture.interrupted else ""
-        self._flash(f"{note}기록 저장됨 - {directory}")
+        self._flash(f"{note}리포트 저장됨 - {directory}")
         return directory
 
-    def _tick_recording(self) -> None:
+    def _tick_session(self) -> None:
         seconds = self._capture.recorded_seconds
-        self._record_button.setText(
-            RECORD_ACTIVE_TEXT.format(f"{int(seconds) // 60}:{int(seconds) % 60:02d}")
+        self._session_button.setText(
+            SESSION_ACTIVE_TEXT.format(f"{int(seconds) // 60}:{int(seconds) % 60:02d}")
         )
         if seconds >= MAX_SESSION_SECONDS:  # memory cap: stop before it hurts
-            self.toggle_recording()
+            self.toggle_report_session()
 
     NOTE_MS = 6000  # long enough to read a path, short enough not to nag
 

@@ -14,11 +14,12 @@ python -m tuner
 
 첫 실행 시 마이크 권한을 허용해야 한다.
 
-리포트 두 가지 (둘 다 `~/.tuner/reports/<시각>/` 에 오디오 + 그때 화면에
-표시된 값이 함께 저장된다):
+**리포트** 두 가지 — 개발용이다. 둘 다 `~/.tuner/reports/<시각>/` 에 오디오 +
+그때 화면에 표시된 값이 함께 저장된다 (연주를 녹음하는 기능은 따로이고,
+설계는 [docs/recording.md](docs/recording.md)):
 
 - **Ctrl+R** — 방금 이상했다면 누른다. **직전 10초**가 소급 저장된다.
-- **● 기록 버튼 (Ctrl+L)** — 작정하고 실험할 때. 누른 순간부터 다시 누를
+- **Ctrl+Shift+R** — 작정하고 실험할 때. 누른 순간부터 다시 누를
   때까지 **한 프레임도 빠짐없이** 기록된다 (최대 10분).
 
 저장된 리포트는:
@@ -87,4 +88,5 @@ python tests/render_sequence.py oboe tchaik4 t.wav # 뱅크에서 시퀀스 wav 
 | 스무딩 값의 결정 근거 확인·재튜닝 | [스무딩 튜닝 기록](docs/smoothing-tuning.md) |
 | 음이름 래치(유지·cent 상한) 값의 결정 근거 확인·재튜닝 | [음이름 래치 튜닝 기록](docs/note-latch-tuning.md) |
 | 메트로놈 타이밍·클릭 소리·간섭 억제 손보기 | [메트로놈](docs/metronome.md) |
+| 녹음(연주 녹음·저장·목록) 만들기·손보기 | [녹음 설계 결정](docs/recording.md) |
 | 실악기 픽스처 추가 | [fixtures/audio](tests/fixtures/audio/README.md), [notes 뱅크](tests/fixtures/notes/README.md), [외부 라벨](tests/fixtures/external/README.md), [셈여림](tests/fixtures/dynamics/README.md) |

@@ -313,28 +313,28 @@ def test_report_says_so_when_there_is_nothing_to_save(make_window, tmp_path, mon
     window.close()
 
 
-def test_record_button_keeps_the_whole_session(qapp, make_window, tmp_path, monkeypatch):
+def test_session_button_keeps_the_whole_session(qapp, make_window, tmp_path, monkeypatch):
     """Press, play, press: everything in between lands in one report — the
-    ring's 10 seconds are not the limit when you meant to record."""
+    ring's 10 seconds are not the limit when you meant to capture on purpose."""
     from tuner.app import main_window
-    from tuner.app.main_window import RECORD_IDLE_TEXT
+    from tuner.app.main_window import SESSION_IDLE_TEXT
 
-    monkeypatch.setattr(main_window, "RECORD_BUTTON_ENABLED", True)
+    monkeypatch.setattr(main_window, "REPORT_SESSION_BUTTON_ENABLED", True)
     monkeypatch.setenv("TUNER_REPORTS_DIR", str(tmp_path / "reports"))
     fake = FakeAudioInput(tone(440.0, 0.5, instrument="violin"))
     window = make_window(fake)
     window.start()
 
-    window._record_button.click()
+    window._session_button.click()
     assert window._capture.recording
-    assert "기록 중" in window._record_button.text()
+    assert "리포트 중" in window._session_button.text()
 
     fake.pump()
     qapp.processEvents()
-    directory = window.toggle_recording()  # the second press
+    directory = window.toggle_report_session()  # the second press
 
     assert directory is not None
-    assert window._record_button.text() == RECORD_IDLE_TEXT
+    assert window._session_button.text() == SESSION_IDLE_TEXT
     meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
     assert meta["kind"] == "session"
     assert meta["seconds"] == pytest.approx(0.5, abs=0.02)
@@ -345,13 +345,13 @@ def test_record_button_keeps_the_whole_session(qapp, make_window, tmp_path, monk
 def test_closing_mid_recording_saves_rather_than_drops(qapp, make_window, tmp_path, monkeypatch):
     from tuner.app import main_window
 
-    monkeypatch.setattr(main_window, "RECORD_BUTTON_ENABLED", True)
+    monkeypatch.setattr(main_window, "REPORT_SESSION_BUTTON_ENABLED", True)
     reports = tmp_path / "reports"
     monkeypatch.setenv("TUNER_REPORTS_DIR", str(reports))
     fake = FakeAudioInput(tone(440.0, 0.3, instrument="violin"))
     window = make_window(fake)
     window.start()
-    window.toggle_recording()
+    window.toggle_report_session()
     fake.pump()
     qapp.processEvents()
 

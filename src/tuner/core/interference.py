@@ -50,7 +50,8 @@ CLICK_SUPPRESSION_ENABLED = True
 # (suppression off: 8 and 17 segments). The knee is 20 - everything above it
 # buys nothing here and costs frozen frames. 30 is taken anyway: a synthetic
 # click has no room behind it, and one extra click-length is the cheapest
-# insurance against a real one. Re-measure from a room capture (Ctrl+L, then
+# insurance against a real one. Re-measure from a room capture (Ctrl+Shift+R,
+# then
 # tools/promote) before trusting 20.
 CLICK_LEAD_S = 0.010
 CLICK_TAIL_S = 0.030

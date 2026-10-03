@@ -294,7 +294,7 @@ class MetronomeBar(QWidget):
 
     def _button(self, text: str, on_click, width: int) -> QPushButton:
         button = QPushButton(text)
-        # keyboard focus belongs to the window (Ctrl+R / Ctrl+L), never to a
+        # keyboard focus belongs to the window (the Ctrl+R report keys), never to a
         # tempo button that would then swallow the space bar
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button.setFixedWidth(width)

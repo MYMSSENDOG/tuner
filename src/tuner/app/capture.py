@@ -14,8 +14,8 @@ Two ways to take one:
 
 - **ring** (Ctrl+R): the last RING_SECONDS, saved *after* the fact. For the
   moment you did not see coming.
-- **session** (the 기록 button): start to stop, nothing dropped. For sitting
-  down and playing the thing on purpose.
+- **session** (Ctrl+Shift+R, or the 리포트 button): start to stop, nothing
+  dropped. For sitting down and playing the thing on purpose.
 
 Both write the same report format, so promote/trace read them the same way.
 Cost when nobody is capturing: nothing — the engine takes `capture=None` and
@@ -179,7 +179,7 @@ class FieldCapture:
         """Stop recording and write the whole session as one report."""
         self._recording = False
         if not self._session_blocks:
-            raise RuntimeError("기록된 오디오가 없다 (입력이 오기 전에 정지했다)")
+            raise RuntimeError("리포트에 담을 오디오가 없다 (입력이 오기 전에 정지했다)")
         signal = np.concatenate(self._session_blocks).astype(np.float64)
         frames = _retimed(self._session_frames, self._session_start / self._sr)
         kwargs.setdefault("extra", {})
