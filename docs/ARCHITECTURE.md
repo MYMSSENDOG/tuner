@@ -11,6 +11,9 @@
 │   meter_model.py   미터 계산 (색상·바늘각, 무-Qt)    │
 │   engine.py        audio→core 파이프라인 조립(무-Qt) │
 │   capture.py       직전 N초 링버퍼 + 리포트 저장      │
+│   recorder.py      연주 녹음·저장·목록(무-Qt)        │
+│   recordings_drawer 녹음 서랍  drawer_handle 손잡이   │
+│   save_take_dialog 저장 창   take_player 재생        │
 │   metronome.py     메트로놈 조립(무-Qt) + 클릭 시각   │
 │   metronome_widget 메트로놈 컨트롤 한 줄             │
 ├──────────────────────┬──────────────────────────┤
@@ -128,6 +131,7 @@ tests/
 | `test_display_contract.py` | 이름·숫자·Hz 가 서로 모순되지 않는다, 스무딩은 검출 밖의 값을 만들지 않는다 | ±50 제품 규칙 + 산수 |
 | `test_arithmetic_truth.py` | 음이름 격자 **밖** 랜덤 주파수도 ±2¢ (씨드 고정) | 합성한 주파수 그 자체 |
 | `test_shortcuts.py` | 두 키가 두 가지를 뜻하지 않는다 | Qt 가 충돌을 조용히 삼킨다는 사실 |
+| `test_recording_truth.py` | 녹음한 길이 = 파일 길이, 일시정지는 결과에 없다, 손실 압축을 거쳐도 ±2¢, 서명 없으면 안 보인다 | 합성한 신호 그 자체 |
 
 각 파일에는 규칙이 실제로 무언가를 잡는지 확인하는 **검정력 테스트**가
 같이 있다 (`..._would_catch_...`) — 아무것도 읽지 않는 검사기는 모든 것을
