@@ -5,7 +5,8 @@ valid answer — the date and time is a real name, and most takes never need a
 better one. Typing replaces it, because a player who means to name this take
 should not have to clear a field first.
 
-Discarding asks. Everything else here is reversible; a performance is not.
+Discarding asks — every way of discarding, because they all arrive at the
+same place. Everything else here is reversible; a performance is not.
 
 Built to the same recipe as the metronome's sound dialog (a QDialog with a
 button box), because a second dialog that behaved differently would be a
@@ -73,7 +74,7 @@ class SaveTakeDialog(QDialog):
         self._discard = QPushButton(DISCARD_TEXT)
         self._discard.setStyleSheet(DISCARD_STYLE)
         self._discard.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._discard.clicked.connect(self._confirm_discard)
+        self._discard.clicked.connect(self.reject)
         buttons.addWidget(self._discard)
 
         self._save = QPushButton(SAVE_TEXT)
@@ -84,7 +85,9 @@ class SaveTakeDialog(QDialog):
         layout.addLayout(buttons)
 
         self._field.setFocus()
-        self._field.returnPressed.connect(self.accept)
+        # Enter is handled by the dialog's default button, not wired to accept
+        # directly: wired directly it bypassed the button's enabled state and
+        # saved an empty title.
         self._field.textChanged.connect(self._sync_save_enabled)
         self._sync_save_enabled(self._field.text())
 
@@ -95,10 +98,6 @@ class SaveTakeDialog(QDialog):
     def _sync_save_enabled(self, text: str) -> None:
         """An empty title has no name to save under, so the button waits."""
         self._save.setEnabled(bool(text.strip()))
-
-    def _confirm_discard(self) -> None:
-        if self._ask_discard():
-            self.reject()
 
     def _ask_discard(self) -> bool:
         answer = QMessageBox.question(
@@ -111,14 +110,15 @@ class SaveTakeDialog(QDialog):
         return answer == QMessageBox.StandardButton.Discard
 
     def reject(self) -> None:
-        """Esc comes through here too, which is why the question is asked in
-        `keyPressEvent` rather than in this override — a programmatic reject
-        (the discard button, already confirmed) must not ask twice."""
-        super().reject()
+        """Every way of throwing the take away lands here, so the question is
+        asked here and nowhere else.
 
-    def keyPressEvent(self, event) -> None:
-        if event.key() == Qt.Key.Key_Escape:
-            if self._ask_discard():
-                super().reject()
-            return
-        super().keyPressEvent(event)
+        Qt routes all three through `reject()`: the 버리기 button, Esc, and the
+        title bar's close button (`QDialog.closeEvent` calls `reject()` and
+        keeps the dialog open if it is still visible afterwards). The question
+        used to live in a key handler, which covered Esc and left the close
+        button discarding the take without a word — including the take that
+        closing the main window had just stopped.
+        """
+        if self._ask_discard():
+            super().reject()
