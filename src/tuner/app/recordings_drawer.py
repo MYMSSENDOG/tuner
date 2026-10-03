@@ -239,7 +239,7 @@ class RecordingsDrawer(QWidget):
     def push_level(self, level: float, live: bool = True) -> None:
         self._trail.push(level, live)
 
-    def set_takes(self, takes: list[tuple[str, str]]) -> None:
+    def set_takes(self, takes: list[tuple[str, str]], keep: int | None = None) -> None:
         """(title, duration) newest first — that is the order they are read in.
 
         The duration is right-aligned and never elided: it is three or four
@@ -269,6 +269,11 @@ class RecordingsDrawer(QWidget):
             item.setSizeHint(row.sizeHint())
             self._list.setItemWidget(item, row)
         self._heading.setText(f"녹음 {len(takes)}개")
+        if takes:
+            # Something is always selected, so "재생" and "삭제" always have a
+            # subject — a toolbar whose buttons do nothing until you click a
+            # row first reads as broken.
+            self._list.setCurrentRow(min(keep if keep is not None else 0, len(takes) - 1))
 
     def set_footer(self, text: str) -> None:
         self._footer.setText(text)
@@ -290,3 +295,12 @@ class RecordingsDrawer(QWidget):
     @property
     def take_count(self) -> int:
         return self._list.count()
+
+    @property
+    def selected_index(self) -> int:
+        """Which take the toolbar acts on, or -1 when the list is empty."""
+        return self._list.currentRow()
+
+    def select(self, index: int) -> None:
+        if 0 <= index < self._list.count():
+            self._list.setCurrentRow(index)

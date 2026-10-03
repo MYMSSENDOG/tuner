@@ -5,20 +5,24 @@ from __future__ import annotations
 import signal
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QSettings, QSignalBlocker, Qt, QTimer, Signal
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtCore import QObject, QSettings, QSignalBlocker, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
+from tuner.app import recorder
 from tuner.app.capture import MAX_SESSION_SECONDS, RING_SECONDS, FieldCapture
 from tuner.app.drawer_handle import WIDTH as HANDLE_WIDTH
 from tuner.app.drawer_handle import DrawerHandle
@@ -30,6 +34,8 @@ from tuner.app.metronome import MetronomeService
 from tuner.app.metronome_widget import MetronomeBar
 from tuner.app.recordings_drawer import WIDTH as DRAWER_WIDTH
 from tuner.app.recordings_drawer import RecordingsDrawer
+from tuner.app.save_take_dialog import SaveTakeDialog
+from tuner.app.take_player import TakePlayer
 from tuner.app.trace_widget import PitchTraceWidget
 from tuner.audio.input import AudioInput
 from tuner.audio.output import AudioOutput
@@ -113,6 +119,11 @@ RECORD_ACTIVE_STYLE = (
     "background-color: #7a3b3b; border: 1px solid #a35151; color: #ffd9d9;"
     " padding: 2px 0;"
 )
+# Below this a take is two presses in a row, not a performance. Short enough
+# that a scale fragment still counts.
+MIN_TAKE_SECONDS = 0.5
+RECORDER_TICK_MS = 250  # the elapsed clock; finer than a second so it looks live
+DRAWER_OPEN_KEY = "drawer_open"
 
 
 class _ReadingBridge(QObject):
@@ -143,6 +154,8 @@ class MainWindow(QMainWindow):
         audio_input: AudioInput,
         settings: QSettings | None = None,
         audio_output: AudioOutput | None = None,
+        playback_output: AudioOutput | None = None,
+        recordings_dir: Path | None = None,
     ):
         super().__init__()
         self.setWindowTitle("Tuner")
@@ -154,10 +167,21 @@ class MainWindow(QMainWindow):
         # timeline at construction so it can look away while one passes
         # (core/interference.py)
         self._metronome = MetronomeService(audio_output or SoundDeviceOutput())
+        # The take recorder is a second block sink beside the report capture;
+        # neither knows about the other (app/recorder.py).
+        self._recorder = recorder.Recorder()
+        self._recordings_dir = (
+            recordings_dir if recordings_dir is not None else recorder.recordings_dir()
+        )
+        self._takes: list[recorder.Take] = []
+        # A second output stream, opened only when something is played. Sharing
+        # the metronome's would mean a click could not sound over a playback.
+        self._player = TakePlayer(playback_output or SoundDeviceOutput())
         self._engine = TunerEngine(
             audio_input,
             self._bridge.reading.emit,
             capture=self._capture,
+            recorder=self._recorder,
             interference=self._metronome.clicks,
         )
         self._report_shortcut = QShortcut(QKeySequence(REPORT_SHORTCUT), self)
@@ -171,8 +195,15 @@ class MainWindow(QMainWindow):
             self._shortcut(STOP_SHORTCUT, self.stop_recording),
             self._shortcut(DRAWER_SHORTCUT, self.toggle_drawer),
         ]
-        self._recording = False
-        self._paused = False
+        self._recorder_timer = QTimer(self)
+        self._recorder_timer.setInterval(RECORDER_TICK_MS)
+        self._recorder_timer.timeout.connect(self._tick_recorder)
+        # Playback has no end-of-stream callback (rendering runs on the audio
+        # thread and must not touch the device), so the window stops it on a
+        # one-shot timer set to the take's own length.
+        self._play_timer = QTimer(self)
+        self._play_timer.setSingleShot(True)
+        self._play_timer.timeout.connect(self._playback_finished)
 
         self._meter = MeterWidget()
         self._bridge.reading.connect(self._on_reading)
@@ -279,6 +310,9 @@ class MainWindow(QMainWindow):
         self._drawer = RecordingsDrawer()
         self._drawer.pause_pressed.connect(self.toggle_pause)
         self._drawer.stop_pressed.connect(self.stop_recording)
+        self._drawer.play_pressed.connect(self.play_selected)
+        self._drawer.rename_pressed.connect(self.rename_selected)
+        self._drawer.delete_pressed.connect(self.delete_selected)
         self._drawer.folder_pressed.connect(self._open_recordings_folder)
         self._drawer.hide()
         shell_layout.addWidget(self._drawer)
@@ -287,12 +321,16 @@ class MainWindow(QMainWindow):
         shell.setStyleSheet("background-color: #3b4252; color: #c7d2e3;")
         self.setCentralWidget(shell)
         self.resize(TUNER_WIDTH + HANDLE_WIDTH, 190)
+        self.refresh_takes()
         self._restore_settings()
 
     def start(self) -> None:
         self._engine.start(self._device_combo.currentData())
 
     def closeEvent(self, event) -> None:
+        if self.recording:  # a performance is never dropped on the way out
+            self.stop_recording()
+        self._player.stop()
         if self._capture.recording:  # never drop what was being recorded
             self._session_timer.stop()
             try:
@@ -306,6 +344,11 @@ class MainWindow(QMainWindow):
 
     def _restore_settings(self) -> None:
         s = self._settings
+        # Restored before the geometry below, so that the saved size is the
+        # one that matches the state the drawer comes back in.
+        if s.value(DRAWER_OPEN_KEY, False, type=bool):
+            self.set_drawer_open(True)
+
         stored_a4 = s.value("a4_hz", 442, type=int)
         self._a4_spin.setValue(stored_a4 if isinstance(stored_a4, int) else 442)
         # explicit sync: setValue emits no signal when the value is unchanged
@@ -349,6 +392,7 @@ class MainWindow(QMainWindow):
         s.setValue("metronome_sound", self._metronome.sound)
         s.setValue("input_gate_dbfs", self._engine.input_gate_dbfs)
         s.setValue("always_on_top", self._pin_check.isChecked())
+        s.setValue(DRAWER_OPEN_KEY, self.drawer_open)
         s.setValue(GEOMETRY_KEY, self.saveGeometry())
         s.sync()
 
@@ -360,10 +404,12 @@ class MainWindow(QMainWindow):
         self._meter.set_reading(reading)
         self._trace.add_reading(reading)
         self._level_bar.set_level(reading.level_dbfs)
-        if self._recording:
+        if self.recording:
             # The same level the bar shows, kept as a short trail: proof that
             # the microphone is still live without drawing the file's waveform.
-            self._drawer.push_level(level_fraction(reading.level_dbfs), live=not self._paused)
+            self._drawer.push_level(
+                level_fraction(reading.level_dbfs), live=not self._recorder.paused
+            )
 
         if reading.level_dbfs <= DIGITAL_SILENCE_DBFS:
             self._silent_readings += 1
@@ -397,15 +443,15 @@ class MainWindow(QMainWindow):
         shortcut.activated.connect(slot)
         return shortcut
 
-    # --- the recorder (UI only so far: no audio is written yet) ------------
+    # --- the recorder ------------------------------------------------------
 
     @property
     def recording(self) -> bool:
-        return self._recording
+        return self._recorder.running
 
     @property
     def paused(self) -> bool:
-        return self._paused
+        return self._recorder.paused
 
     @property
     def drawer_open(self) -> bool:
@@ -442,38 +488,156 @@ class MainWindow(QMainWindow):
 
     def toggle_recording(self) -> None:
         """Alt+R / the dot. Starts a take and opens the drawer with it."""
-        if self._recording:
+        if self.recording:
             self.stop_recording()
             return
-        self._recording = True
-        self._paused = False
+        self._player.stop()  # listening and recording are not done at once
+        self._recorder.start()
         self._record_button.setText(RECORD_ACTIVE_TEXT)
         self._record_button.setStyleSheet(RECORD_ACTIVE_STYLE)
         self._drawer.show_recording(True)
         self._drawer.set_paused(False)
+        self._drawer.set_elapsed(0.0)
+        self._recorder_timer.start()
         self.set_drawer_open(True)
 
     def toggle_pause(self) -> None:
         """Alt+P. Does nothing at all when no take is running — a key that is
         not applicable says nothing rather than complaining."""
-        if not self._recording:
+        if not self.recording:
             return
-        self._paused = not self._paused
-        self._drawer.set_paused(self._paused)
+        self._drawer.set_paused(self._recorder.toggle_pause())
 
-    def stop_recording(self) -> None:
-        """Alt+S. Ends the take; the save dialog belongs to the next step."""
-        if not self._recording:
-            return
-        self._recording = False
-        self._paused = False
+    def stop_recording(self) -> Path | None:
+        """Alt+S. Ends the take and asks what to call it."""
+        if not self.recording:
+            return None
+        signal = self._recorder.stop()
+        sample_rate = self._recorder.sample_rate or self._engine_sample_rate()
+        self._recorder_timer.stop()
         self._record_button.setText(RECORD_IDLE_TEXT)
         self._record_button.setStyleSheet(RECORD_IDLE_STYLE)
         self._drawer.show_recording(False)
-        self._flash("녹음 중지 — 저장은 아직 붙지 않았습니다")
+        return self._offer_to_save(signal, sample_rate)
+
+    def _engine_sample_rate(self) -> int:
+        return getattr(self._engine, "_sr", 0) or 44100
+
+    def _offer_to_save(self, signal, sample_rate: int) -> Path | None:
+        """The one irreversible moment in the feature, so it asks twice: once
+        for a name, and again before throwing anything away."""
+        seconds = len(signal) / sample_rate if sample_rate else 0.0
+        if seconds < MIN_TAKE_SECONDS:
+            # Too short to be a performance - almost certainly two presses in a
+            # row. Saying so beats opening a dialog about nothing.
+            self._flash(f"녹음이 너무 짧습니다 ({seconds:.1f}초)", ok=False)
+            return None
+        a4_hz = float(self._a4_spin.value())
+        dialog = SaveTakeDialog(recorder.default_title(), seconds, a4_hz, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self._flash("녹음을 버렸습니다")
+            return None
+        try:
+            path = recorder.save_take(
+                signal,
+                sample_rate,
+                dialog.title,
+                directory=self._recordings_dir,
+                a4_hz=a4_hz,
+            )
+        except (RuntimeError, OSError) as error:
+            self._flash(f"녹음 저장 실패: {error}", ok=False)
+            return None
+        self.refresh_takes()
+        self._flash(f"저장됨 - {path.name}")
+        return path
+
+    # --- the list of takes --------------------------------------------------
+
+    def refresh_takes(self, select: int = 0) -> None:
+        self._takes = recorder.list_takes(self._recordings_dir)
+        self._drawer.set_takes(
+            [(take.title, take.duration_text) for take in self._takes], keep=select
+        )
+        if self._takes:
+            size = recorder.human_size(recorder.total_bytes(self._takes))
+            self._drawer.set_footer(f"{size} · {self._recordings_dir}")
+        else:
+            self._drawer.set_footer(f"아직 녹음이 없습니다 · {self._recordings_dir}")
+
+    def _selected_take(self):
+        index = self._drawer.selected_index
+        if 0 <= index < len(self._takes):
+            return index, self._takes[index]
+        return -1, None
+
+    def play_selected(self) -> None:
+        """Toggle: pressing it while that take plays stops it."""
+        _, take = self._selected_take()
+        if take is None:
+            return
+        if self._player.playing:
+            self._player.stop()
+            self._play_timer.stop()
+            self._flash("재생 중지")
+            return
+        try:
+            seconds = self._player.play_file(take.path)
+        except (RuntimeError, OSError) as error:
+            self._flash(f"재생 실패: {error}", ok=False)
+            return
+        self._flash(f"재생 중 - {take.title}")
+        self._play_timer.start(max(int(seconds * 1000), 100))
+
+    def _playback_finished(self) -> None:
+        self._play_timer.stop()
+        self._player.stop()
+
+    def rename_selected(self) -> None:
+        index, take = self._selected_take()
+        if take is None:
+            return
+        new_title, ok = QInputDialog.getText(self, "이름 바꾸기", "제목", text=take.title)
+        if not ok or not new_title.strip():
+            return
+        try:
+            recorder.rename_take(take.path, new_title.strip())
+        except OSError as error:
+            self._flash(f"이름 바꾸기 실패: {error}", ok=False)
+            return
+        self.refresh_takes(select=index)
+
+    def delete_selected(self) -> None:
+        index, take = self._selected_take()
+        if take is None:
+            return
+        answer = QMessageBox.question(
+            self,
+            "녹음 삭제",
+            f"{take.title} 을(를) 지웁니다. 되돌릴 수 없습니다.",
+            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Discard:
+            return
+        if self._player.playing:
+            self._player.stop()
+            self._play_timer.stop()
+        try:
+            take.path.unlink()
+        except OSError as error:
+            self._flash(f"삭제 실패: {error}", ok=False)
+            return
+        self.refresh_takes(select=max(index - 1, 0))
+        self._flash(f"삭제됨 - {take.title}")
 
     def _open_recordings_folder(self) -> None:
-        self._flash("녹음 폴더는 저장 기능과 함께 붙습니다")
+        self._recordings_dir.mkdir(parents=True, exist_ok=True)
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._recordings_dir))):
+            self._flash(f"폴더를 열지 못했습니다 - {self._recordings_dir}", ok=False)
+
+    def _tick_recorder(self) -> None:
+        self._drawer.set_elapsed(self._recorder.seconds)
 
     def toggle_report_session(self) -> Path | None:
         """The 리포트 button: start keeping everything, or stop and write it."""
