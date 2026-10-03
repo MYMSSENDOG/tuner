@@ -30,11 +30,11 @@ from tuner.app import main_window as mw
 
 @pytest.fixture
 def window(qapp, tmp_path, monkeypatch):
-    """Every optional control switched on, so no binding hides behind a flag.
+    """Every optional control switched on, so no binding can hide behind a flag.
 
-    The session-report button is off by default (it costs the controls row
-    width), and its shortcut is registered with it — a test that took the
-    defaults would check half the namespace.
+    The session-report button is off by default because it costs width on the
+    window's floor row. Its *key* is registered either way now, but the switch
+    is still flipped here so that anything added behind a flag later is seen.
     """
     monkeypatch.setattr(mw, "REPORT_SESSION_BUTTON_ENABLED", True)
     settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
@@ -74,6 +74,21 @@ def test_every_shortcut_constant_is_a_real_key(window):
     for key, target in bindings(window):
         assert key, f"a shortcut on {target} has no key sequence"
         assert not QKeySequence(key).isEmpty()
+
+
+def test_the_session_key_works_without_its_button(qapp, tmp_path):
+    """A documented shortcut must exist in the build people actually run.
+
+    It did not: the key was registered inside the button's `if`, so README
+    described a Ctrl+Shift+R that a default build never bound.
+    """
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    plain = mw.MainWindow(FakeAudioInput(tone(440.0, 0.05)), settings)
+    try:
+        assert mw.REPORT_SESSION_BUTTON_ENABLED is False, "this test is about the default"
+        assert mw.REPORT_SESSION_SHORTCUT in [key for key, _ in bindings(plain)]
+    finally:
+        plain.close()
 
 
 def test_the_report_keys_stay_one_family():

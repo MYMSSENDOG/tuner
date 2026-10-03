@@ -258,10 +258,15 @@ class MainWindow(QMainWindow):
         self._session_timer = QTimer(self)
         self._session_timer.setInterval(500)
         self._session_timer.timeout.connect(self._tick_session)
+        # The key is registered either way; only the button is behind the
+        # switch. They were bound together, which meant README documented a
+        # shortcut that did not exist in a default build - the button costs
+        # width on the window's floor row, a shortcut costs nothing.
+        self._session_shortcut = self._shortcut(
+            REPORT_SESSION_SHORTCUT, self.toggle_report_session
+        )
         if REPORT_SESSION_BUTTON_ENABLED:
             controls.addWidget(self._session_button)
-            self._session_shortcut = QShortcut(QKeySequence(REPORT_SESSION_SHORTCUT), self)
-            self._session_shortcut.activated.connect(self.toggle_report_session)
 
         central = QWidget()
         layout = QVBoxLayout(central)
