@@ -37,10 +37,18 @@ def resampled(signal: np.ndarray, from_sr: int, to_sr: int) -> np.ndarray:
 class TakePlayer:
     """One take at a time, with a position the view can show and move.
 
-    The device keeps pulling while paused — it is handed silence rather than
-    being stopped — because opening and closing a stream for every pause is
-    both slow and the shape of an audio-thread deadlock. `loaded` is therefore
-    the state that matters to a view: there is a take in hand, playing or not.
+    Three states, kept apart on purpose:
+
+    - `loaded`: a take is in hand (what the view cares about).
+    - `playing`: sound is coming out right now.
+    - the device being open — private, and *not* the same as either. It opens
+      the first time a take plays and stays open through pauses and the end of
+      the take, being handed silence, because opening a stream is slow and
+      reopening one on every resume is an audible gap. It closes in `stop()`.
+
+    These used to be inferred from one another (`playing` false meant "open the
+    device", `loaded` meant "close it"), which reopened the stream on every
+    resume and closed a stream that had never been opened.
     """
 
     def __init__(self, output: AudioOutput):
@@ -49,6 +57,7 @@ class TakePlayer:
         self._position = 0
         self._loaded = False
         self._playing = False
+        self._device_open = False
         self._path = None
 
     # --- what the view reads ---------------------------------------------
@@ -105,10 +114,10 @@ class TakePlayer:
             return
         if self.finished:
             self._position = 0  # pressing play at the end starts it over
-        started = self._playing
         self._playing = True
-        if not started:
+        if not self._device_open:
             self._output.start(self._render)
+            self._device_open = True
 
     def pause(self) -> None:
         self._playing = False
@@ -121,13 +130,13 @@ class TakePlayer:
 
     def stop(self) -> None:
         """Give the device back and forget the take."""
-        was_open = self._loaded
         self._loaded = False
         self._playing = False
         self._signal = np.zeros(0)
         self._position = 0
         self._path = None
-        if was_open:
+        if self._device_open:
+            self._device_open = False
             self._output.stop()
 
     def _render(self, frames: int) -> np.ndarray:
