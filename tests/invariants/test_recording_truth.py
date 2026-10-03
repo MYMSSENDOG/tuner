@@ -53,14 +53,14 @@ def read_back(path) -> tuple[np.ndarray, int]:
 
 @pytest.mark.parametrize("seconds", [0.4, 1.0, 2.5])
 def test_the_file_lasts_as_long_as_what_was_recorded(tmp_path, seconds):
-    rec = recorder.Recorder()
+    rec = recorder.Recorder(directory=tmp_path)
     rec.start()
     signal = tone(note_to_freq("A", 4), seconds, instrument="violin")
     for start in range(0, len(signal), 256):
         rec.push_block(signal[start : start + 256], SR)
-    collected = rec.stop()
+    rec.stop()
 
-    path = recorder.save_take(collected, SR, f"len {seconds}", directory=tmp_path)
+    path = rec.finish(f"len {seconds}")
     assert sf.info(str(path)).duration == pytest.approx(seconds, abs=LENGTH_SLACK_S)
 
 
@@ -71,7 +71,7 @@ def test_pausing_shortens_the_file_by_exactly_what_was_skipped(tmp_path):
     played = tone(note_to_freq("A", 4), 1.0, instrument="violin")
     skipped = tone(note_to_freq("C", 5), 5.0, instrument="violin")
 
-    rec = recorder.Recorder()
+    rec = recorder.Recorder(directory=tmp_path)
     rec.start()
     for start in range(0, len(played), 256):
         rec.push_block(played[start : start + 256], SR)
@@ -82,7 +82,8 @@ def test_pausing_shortens_the_file_by_exactly_what_was_skipped(tmp_path):
     for start in range(0, len(played), 256):
         rec.push_block(played[start : start + 256], SR)
 
-    path = recorder.save_take(rec.stop(), SR, "paused", directory=tmp_path)
+    rec.stop()
+    path = rec.finish("paused")
     assert sf.info(str(path)).duration == pytest.approx(2.0, abs=LENGTH_SLACK_S)
 
 
@@ -91,7 +92,7 @@ def test_any_number_of_pauses_still_adds_up(tmp_path, pauses):
     """Whatever the player does with the pause key, the file is the sum of the
     stretches that were recorded."""
     piece = tone(note_to_freq("G", 3), 0.2, instrument="violin")
-    rec = recorder.Recorder()
+    rec = recorder.Recorder(directory=tmp_path)
     rec.start()
     for _ in range(pauses + 1):
         for start in range(0, len(piece), 256):
@@ -102,7 +103,8 @@ def test_any_number_of_pauses_still_adds_up(tmp_path, pauses):
 
     expected = 0.2 * (pauses + 1)
     assert rec.seconds == pytest.approx(expected, abs=0.01)
-    path = recorder.save_take(rec.stop(), SR, f"p{pauses}", directory=tmp_path)
+    rec.stop()
+    path = rec.finish(f"p{pauses}")
     assert sf.info(str(path)).duration == pytest.approx(expected, abs=LENGTH_SLACK_S)
 
 
@@ -125,7 +127,7 @@ def test_the_input_gate_never_reaches_the_recording(tmp_path):
     quiet = tone(note_to_freq("A", 4), 1.0, instrument="violin") * 0.002
     assert float(np.sqrt(np.mean(quiet**2))) < detector.input_gate_rms, "not actually quiet"
 
-    rec = recorder.Recorder()
+    rec = recorder.Recorder(directory=tmp_path)
     readings = []
     engine = TunerEngine(
         _StubInput(quiet), readings.append, detector=detector, recorder=rec
@@ -133,11 +135,13 @@ def test_the_input_gate_never_reaches_the_recording(tmp_path):
     engine.start()
     rec.start()
     engine._audio.pump()
-    collected = rec.stop()
+    rec.stop()
+    collected, _ = sf.read(str(rec.finish("quiet")), dtype="float32")
 
     assert len(collected) == len(quiet), "the gate ate part of the take"
+    # lossy, so not sample-exact - but the same level, not gated to silence
     assert float(np.max(np.abs(collected))) == pytest.approx(
-        float(np.max(np.abs(quiet))), rel=1e-6
+        float(np.max(np.abs(quiet))), rel=0.25
     )
     # and the gate really was doing its job meanwhile
     assert readings, "no readings at all — the engine never ran"

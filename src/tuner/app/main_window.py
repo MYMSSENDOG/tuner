@@ -178,10 +178,12 @@ class MainWindow(QMainWindow):
         self._metronome = MetronomeService(audio_output or SoundDeviceOutput())
         # The take recorder is a second block sink beside the report capture;
         # neither knows about the other (app/recorder.py).
-        self._recorder = recorder.Recorder()
         self._recordings_dir = (
             recordings_dir if recordings_dir is not None else recorder.recordings_dir()
         )
+        # Streams each take straight into the folder it will be saved in, so
+        # keeping it is a rename on the same disk (app/recorder.py).
+        self._recorder = recorder.Recorder(directory=self._recordings_dir)
         self._takes: list[recorder.Take] = []
         # A second output stream, opened only when something is played. Sharing
         # the metronome's would mean a click could not sound over a playback.
@@ -534,7 +536,13 @@ class MainWindow(QMainWindow):
             self.stop_recording()
             return
         self._player.stop()  # listening and recording are not done at once
-        self._recorder.start()
+        try:
+            # the reference the take *began* at goes into its signature
+            self._recorder.start(a4_hz=float(self._a4_spin.value()))
+        except OSError as error:
+            self._drawer.say(f"녹음을 시작할 수 없습니다: {error}", ok=False)
+            self.set_drawer_open(True)
+            return
         self._drawer.show_recording()
         self._drawer.say("")
         self._recorder_timer.start()
@@ -551,37 +559,36 @@ class MainWindow(QMainWindow):
         """Alt+S, or the drawer's stop. Ends the take and asks what to call it."""
         if not self.recording:
             return None
-        signal = self._recorder.stop()
-        sample_rate = self._recorder.sample_rate or self._engine_sample_rate()
         self._recorder_timer.stop()
         self._drawer.show_list()
-        return self._offer_to_save(signal, sample_rate)
+        try:
+            seconds = self._recorder.stop()
+        except RuntimeError as error:
+            self._drawer.say(str(error), ok=False)
+            return None
+        return self._offer_to_save(seconds)
 
-    def _engine_sample_rate(self) -> int:
-        return getattr(self._engine, "_sr", 0) or 44100
-
-    def _offer_to_save(self, signal, sample_rate: int) -> Path | None:
+    def _offer_to_save(self, seconds: float) -> Path | None:
         """The one irreversible moment in the feature, so it asks twice: once
-        for a name, and again before throwing anything away."""
-        seconds = len(signal) / sample_rate if sample_rate else 0.0
+        for a name, and again before throwing anything away.
+
+        The take is already on disk by now (it streamed while it was played),
+        so keeping it is a rename and nothing here waits on an encoder.
+        """
         if seconds < MIN_TAKE_SECONDS:
             # Too short to be a performance - almost certainly two presses in a
             # row. Saying so beats opening a dialog about nothing.
+            self._recorder.discard()
             self._drawer.say(f"녹음이 너무 짧습니다 ({seconds:.1f}초)", ok=False)
             return None
         a4_hz = float(self._a4_spin.value())
         dialog = SaveTakeDialog(recorder.default_title(), seconds, a4_hz, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
+            self._recorder.discard()
             self._drawer.say("녹음을 버렸습니다")
             return None
         try:
-            path = recorder.save_take(
-                signal,
-                sample_rate,
-                dialog.title,
-                directory=self._recordings_dir,
-                a4_hz=a4_hz,
-            )
+            path = self._recorder.finish(dialog.title)
         except (RuntimeError, OSError) as error:
             self._drawer.say(f"녹음 저장 실패: {error}", ok=False)
             return None

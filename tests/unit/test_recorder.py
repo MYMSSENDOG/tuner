@@ -30,78 +30,88 @@ def tone(seconds: float, freq: float = 440.0, sr: int = SR) -> np.ndarray:
 
 
 # --- collecting --------------------------------------------------------------
+# Every assertion reads the file the recorder wrote: there is no in-memory
+# take any more (it streams to disk), and the file is what the player keeps.
 
 
-def test_nothing_is_collected_before_start():
-    rec = recorder.Recorder()
+def written(rec, title="take"):
+    rec.stop()
+    signal, _ = sf.read(str(rec.finish(title)), dtype="float32")
+    return signal
+
+
+def test_nothing_is_collected_before_start(tmp_path):
+    rec = recorder.Recorder(directory=tmp_path)
     rec.push_block(block(0.1), SR)
     assert not rec.running
-    assert len(rec.take()) == 0
+    assert rec.seconds == 0.0
+    assert list(tmp_path.iterdir()) == []
 
 
-def test_a_take_is_what_was_pushed():
-    rec = recorder.Recorder()
+def test_a_take_is_what_was_pushed(tmp_path):
+    rec = recorder.Recorder(directory=tmp_path)
     rec.start()
     rec.push_block(block(0.1), SR)
     rec.push_block(block(0.2), SR)
     assert rec.seconds == pytest.approx(0.3, abs=1e-6)
-    assert len(rec.stop()) == int(SR * 0.3)
+    assert len(written(rec)) == int(SR * 0.3)
     assert not rec.running
 
 
-def test_a_paused_stretch_is_absent_rather_than_silent():
-    """Pausing is not appending, so the gap does not exist in the result.
-
-    The alternative — recording silence through the pause — would make the
-    file longer than the performance and put a hole in the middle of it.
-    """
-    rec = recorder.Recorder()
+def test_a_paused_stretch_is_absent_rather_than_silent(tmp_path):
+    """Pausing is not handing blocks over, so the gap does not exist in the
+    result. Recording silence through the pause would make the file longer
+    than the performance and put a hole in the middle of it."""
+    rec = recorder.Recorder(directory=tmp_path)
     rec.start()
-    rec.push_block(block(0.1, 0.5), SR)
+    rec.push_block(tone(0.1), SR)
     rec.pause()
-    rec.push_block(block(5.0, 0.5), SR)  # a long absence
+    rec.push_block(tone(5.0), SR)  # a long absence
     rec.resume()
-    rec.push_block(block(0.1, 0.5), SR)
-    signal = rec.stop()
-    assert len(signal) == int(SR * 0.2)
-    assert np.all(signal != 0.0), "no silence was recorded"
+    rec.push_block(tone(0.1), SR)
+    assert len(written(rec)) == int(SR * 0.1) * 2
 
 
-def test_pause_toggles():
-    rec = recorder.Recorder()
+def test_pause_toggles(tmp_path):
+    rec = recorder.Recorder(directory=tmp_path)
     rec.start()
     assert rec.toggle_pause() is True
     assert rec.paused
     assert rec.toggle_pause() is False
     assert not rec.paused
+    rec.discard()
 
 
-def test_starting_again_abandons_the_previous_take():
-    rec = recorder.Recorder()
+def test_starting_again_abandons_the_previous_take(tmp_path):
+    rec = recorder.Recorder(directory=tmp_path)
     rec.start()
     rec.push_block(block(0.5), SR)
     rec.start()
     assert rec.seconds == 0.0
+    rec.push_block(block(0.1), SR)
+    assert len(written(rec)) == int(SR * 0.1)
 
 
-def test_discard_keeps_nothing():
-    rec = recorder.Recorder()
+def test_discard_keeps_nothing(tmp_path):
+    rec = recorder.Recorder(directory=tmp_path)
     rec.start()
     rec.push_block(block(0.3), SR)
     rec.discard()
     assert not rec.running
-    assert len(rec.take()) == 0
+    assert list(tmp_path.iterdir()) == []
 
 
-def test_blocks_are_copied_not_referenced():
+def test_blocks_are_copied_not_referenced(tmp_path):
     """The audio layer reuses its buffers; keeping the reference would mean
-    recording whatever happened to be in them later."""
-    rec = recorder.Recorder()
+    recording whatever happened to be in them by the time it was written."""
+    rec = recorder.Recorder(directory=tmp_path)
     rec.start()
-    buffer = block(0.05, 0.4)
+    buffer = tone(0.2)
+    original = buffer.copy()
     rec.push_block(buffer, SR)
     buffer[:] = 0.0
-    assert np.all(rec.take() == pytest.approx(0.4))
+    signal = written(rec)
+    assert np.max(np.abs(signal)) > 0.5 * np.max(np.abs(original))
 
 
 # --- titles and paths ---------------------------------------------------------

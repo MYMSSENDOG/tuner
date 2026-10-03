@@ -12,6 +12,8 @@ Three decisions live here:
   takes — things to mail to a teacher or back up — and hiding them would be
   wrong. The cost is that people put other files there too, which is what the
   signature below is for.
+- **How.** Streamed to disk while it is played, by a writer thread; see
+  `Recorder`. Memory does not grow with the length of a take.
 - **What format.** OGG Vorbis, mono. Lossless was not asked for and costs 7x
   (10 minutes: 53MB as WAV, ~7MB here). libsndfile already ships the encoder,
   so this adds no dependency.
@@ -28,7 +30,10 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import re
+import threading
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,6 +42,8 @@ import numpy as np
 import soundfile as sf
 
 SUFFIX = ".ogg"
+# A take being written. Not `.ogg`, so a half-written file is never listed.
+PART_SUFFIX = ".part"
 FORMAT = "OGG"
 SUBTYPE = "VORBIS"
 
@@ -175,16 +182,36 @@ def grouped(takes: list[Take], now: datetime | None = None) -> list[tuple[str, l
 
 
 class Recorder:
-    """Collects input blocks between start and stop, minus any paused stretch.
+    """Streams a take to disk while it is being played.
 
-    Audio is held in memory and written once, at stop: writing from the audio
-    thread is how you get dropouts, and the same reasoning already governs
-    `capture.py`. A take is one list of blocks, so pausing is simply not
-    appending — the gap does not exist in the result rather than being silence.
+    The audio thread only hands blocks over; a writer thread of the take's own
+    encodes them into a hidden `.part` file next to where the take will end up.
+    Stopping drains that thread and closes the file; saving is then a rename,
+    and discarding is a delete.
+
+    It used to hold the whole take in memory and encode it at stop. That had
+    no ceiling (float32 at 44.1kHz is ~10.6MB a minute, an hour ~635MB, and
+    stop briefly doubled it to join the blocks), froze the window for as long
+    as the encode took, and dropped any block the audio thread appended
+    between joining and clearing. Streaming removes all three at the root:
+    memory is a queue a few blocks deep, there is nothing left to encode at
+    stop, and everything handed over before stop is written.
+
+    Pausing is still simply not handing blocks over — the gap does not exist
+    in the result rather than being silence.
+
+    The audio thread never touches the file. Writing from the audio callback
+    is how dropouts happen; a queue put is a list append and a lock.
     """
 
-    def __init__(self) -> None:
-        self._blocks: list[np.ndarray] = []
+    def __init__(self, directory: Path | None = None) -> None:
+        self._directory = directory
+        self._queue: queue.SimpleQueue | None = None
+        self._writer: threading.Thread | None = None
+        self._part: Path | None = None
+        self._error: BaseException | None = None
+        self._pushed = 0  # frames handed over, for the live clock
+        self._written = 0  # frames the writer actually wrote
         self._sr = 0
         self._running = False
         self._paused = False
@@ -203,16 +230,42 @@ class Recorder:
 
     @property
     def seconds(self) -> float:
-        """Recorded length — paused stretches were never collected, so this is
-        the length of the file that will be written, not of the wall clock."""
+        """Recorded length. Paused stretches were never handed over, so this
+        is the length of the file, not of the wall clock. While running it
+        counts what was handed over; once stopped, what was written."""
         if not self._sr:
             return 0.0
-        return sum(len(b) for b in self._blocks) / self._sr
+        frames = self._pushed if self._running else self._written
+        return frames / self._sr
 
-    def start(self) -> None:
-        self._blocks = []
-        self._running = True
+    @property
+    def has_take(self) -> bool:
+        """A stopped take with sound in it, waiting to be saved or discarded."""
+        return not self._running and self._part is not None and self._written > 0
+
+    def start(self, a4_hz: float = 440.0, directory: Path | None = None) -> None:
+        """Begin a take. One in progress, or one stopped but not yet saved, is
+        thrown away — starting again means the last attempt was not the one."""
+        self.discard()
+        target = directory or self._directory or recordings_dir()
+        target.mkdir(parents=True, exist_ok=True)
+        self._part = target / f".take-{uuid.uuid4().hex}{PART_SUFFIX}"
+        self._error = None
+        self._pushed = 0
+        self._written = 0
+        self._sr = 0
         self._paused = False
+        # A queue per take: a block the audio thread hands over in the instant
+        # after stop lands in the old queue, never at the head of the next take.
+        self._queue = queue.SimpleQueue()
+        self._writer = threading.Thread(
+            target=self._write,
+            args=(self._queue, self._part, float(a4_hz), datetime.now(UTC).astimezone()),
+            name="take-writer",
+            daemon=True,
+        )
+        self._writer.start()
+        self._running = True
 
     def pause(self) -> None:
         self._paused = True
@@ -225,31 +278,112 @@ class Recorder:
         return self._paused
 
     def push_block(self, block: np.ndarray, sr: int) -> None:
-        """Called on the audio thread, for every block, always. Cheap enough
-        to be unconditional: one list append when running, one test when not."""
-        if not self._running or self._paused:
+        """Called on the audio thread, for every block, always. One test when
+        idle; a copy and a queue put when recording. The copy matters: the
+        audio layer reuses its buffers."""
+        target = self._queue
+        if not self._running or self._paused or target is None:
             return
         if sr:
             self._sr = sr
-        self._blocks.append(np.asarray(block, dtype=np.float32).copy())
+        self._pushed += len(block)
+        target.put((np.array(block, dtype=np.float32), self._sr))
 
-    def take(self) -> np.ndarray:
-        """Everything collected so far, as one signal."""
-        if not self._blocks:
-            return np.zeros(0, dtype=np.float32)
-        return np.concatenate(self._blocks)
+    def stop(self) -> float:
+        """Stop collecting, write out what is queued, close the file.
 
-    def stop(self) -> np.ndarray:
-        signal = self.take()
+        Returns the recorded length in seconds. Raises RuntimeError if the
+        writer failed (disk full, folder gone) — the caller has to be told
+        rather than shown a take that is not there.
+        """
+        if not self._running:
+            return self.seconds
         self._running = False
         self._paused = False
-        self._blocks = []
-        return signal
+        self._finish_writer()
+        if self._error is not None:
+            error, self._error = self._error, None
+            self._remove_part()
+            raise RuntimeError(f"녹음을 쓰지 못했습니다: {error}") from error
+        return self.seconds
+
+    def finish(self, title: str) -> Path:
+        """Keep the stopped take under `title`; returns where it landed."""
+        if self._running:
+            self.stop()
+        if not self.has_take:
+            self._remove_part()
+            raise RuntimeError("녹음된 소리가 없습니다")
+        assert self._part is not None
+        path = unique_path(self._part.parent, title)
+        self._part.replace(path)
+        self._part = None
+        return path
 
     def discard(self) -> None:
-        self._running = False
-        self._paused = False
-        self._blocks = []
+        """Throw away whatever is running or waiting to be saved."""
+        if self._running:
+            self._running = False
+            self._paused = False
+            self._finish_writer()
+            self._error = None
+        self._remove_part()
+
+    # --- the writer side ------------------------------------------------------
+
+    def _finish_writer(self) -> None:
+        if self._queue is not None:
+            self._queue.put(None)
+        if self._writer is not None:
+            self._writer.join()
+        self._queue = None
+        self._writer = None
+
+    def _remove_part(self) -> None:
+        if self._part is not None:
+            self._part.unlink(missing_ok=True)
+            self._part = None
+
+    def _write(self, source: queue.SimpleQueue, path: Path, a4_hz: float, at: datetime) -> None:
+        """The writer thread. Opens the file on the first block, because only
+        then is the sample rate known for certain."""
+        handle = None
+        try:
+            while True:
+                item = source.get()
+                if item is None:
+                    break
+                block, sr = item
+                if handle is None:
+                    handle = open_signed(path, sr, a4_hz, at)
+                handle.write(block)
+                self._written += len(block)
+        except BaseException as error:  # noqa: BLE001 — reported by stop()
+            self._error = error
+            while source.get() is not None:  # drain so stop() can finish
+                pass
+        finally:
+            if handle is not None:
+                handle.close()
+
+
+def open_signed(path: Path, sr: int, a4_hz: float, at: datetime) -> sf.SoundFile:
+    """Open a take for writing, already carrying our signature.
+
+    Tags have to be set before the first sample is written, which is why this
+    is one step: a take file is never, even briefly, an unsigned one.
+    """
+    handle = sf.SoundFile(
+        str(path), "w", samplerate=int(sr), channels=1, format=FORMAT, subtype=SUBTYPE
+    )
+    handle.software = SIGNATURE
+    handle.date = at.strftime("%Y-%m-%d")
+    # ASCII only, so it survives the round trip; the title is the filename
+    handle.comment = json.dumps(
+        {"app": SIGNATURE, "a4_hz": round(float(a4_hz), 3), "at": at.isoformat()},
+        ensure_ascii=True,
+    )
+    return handle
 
 
 def save_take(
@@ -261,23 +395,15 @@ def save_take(
     a4_hz: float = 440.0,
     recorded_at: datetime | None = None,
 ) -> Path:
-    """Write one take, signed, and return where it landed."""
+    """Write a whole signal as one signed take. The recorder streams instead;
+    this is for audio that already exists in memory (tests, tools)."""
     if len(signal) == 0:
         raise RuntimeError("녹음된 소리가 없습니다")
     target = directory if directory is not None else recordings_dir()
     target.mkdir(parents=True, exist_ok=True)
     path = unique_path(target, title)
     stamp = (recorded_at or datetime.now(UTC)).astimezone()
-    with sf.SoundFile(
-        str(path), "w", samplerate=int(sr), channels=1, format=FORMAT, subtype=SUBTYPE
-    ) as handle:
-        handle.software = SIGNATURE
-        handle.date = stamp.strftime("%Y-%m-%d")
-        # ASCII only, so it survives the round trip; the title is the filename
-        handle.comment = json.dumps(
-            {"app": SIGNATURE, "a4_hz": round(float(a4_hz), 3), "at": stamp.isoformat()},
-            ensure_ascii=True,
-        )
+    with open_signed(path, sr, a4_hz, stamp) as handle:
         handle.write(np.asarray(signal, dtype=np.float32))
     return path
 
