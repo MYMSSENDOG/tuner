@@ -6,3 +6,8 @@ __pycache__/
 build/
 dist/
 metrics/
+
+# screenshots dropped in for reference, not part of the project
+/기본.png
+/녹음.png
+/재생.png

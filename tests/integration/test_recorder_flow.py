@@ -87,6 +87,7 @@ def test_record_play_stop_save_appears_in_the_list(make_window, qapp, monkeypatc
     path = window.stop_recording()
     qapp.processEvents()
 
+    assert window._drawer.status_text, "the drawer says what happened"
     assert path is not None and path.exists()
     assert path.parent == takes_dir
     assert recorder.is_ours(path)
@@ -164,10 +165,10 @@ def test_the_elapsed_clock_follows_what_was_recorded(make_window, qapp, monkeypa
     fake.pump()
     window._tick_recorder()
     qapp.processEvents()
-    assert window._drawer.elapsed_text == "0:00"  # 0.75s rounds down
+    assert window._drawer.elapsed_text == "00:00:00"  # 0.75s rounds down
     fake.pump()
     window._tick_recorder()
-    assert window._drawer.elapsed_text == "0:01"
+    assert window._drawer.elapsed_text == "00:00:01"
 
 
 def test_closing_mid_take_saves_rather_than_drops(make_window, qapp, monkeypatch, takes_dir):
@@ -225,6 +226,18 @@ def test_delete_asks_first(make_window, qapp, monkeypatch):
     assert window._drawer.take_count == 1
 
 
+def test_everything_the_recorder_says_is_said_in_the_drawer(make_window, qapp, monkeypatch):
+    """The tuner's own note line stays about the tuner."""
+    window, _ = make_window()
+    opened = []
+    monkeypatch.setattr(mw.SaveTakeDialog, "exec", lambda self: opened.append(1), raising=False)
+    window.toggle_recording()
+    window.stop_recording()  # too short to be offered
+    qapp.processEvents()
+    assert "짧" in window._drawer.status_text
+    assert window._note.isHidden(), "the tuner's line was not used"
+
+
 def test_delete_removes_the_file_once_confirmed(make_window, qapp, monkeypatch):
     window, fake = make_window()
     path = saved(window, fake, qapp, monkeypatch, "지운다")
@@ -243,34 +256,78 @@ def test_the_buttons_do_nothing_with_an_empty_list(make_window, qapp, monkeypatc
     """Nothing selected means nothing to act on — and no exception either."""
     window, _ = make_window()
     assert window._drawer.take_count == 0
-    window.play_selected()
+    window.open_take(0)
+    window.toggle_playback()
     window.rename_selected()
     window.delete_selected()
     assert not window._player.playing
+    assert not window._player.loaded
 
 
 # --- playback ---------------------------------------------------------------------
 
 
-def test_playing_a_take_starts_the_output(make_window, qapp, monkeypatch):
+def test_opening_a_take_loads_it_without_starting_it(make_window, qapp, monkeypatch):
+    """The row you clicked is the one you meant to look at, which is not always
+    the one you meant to hear — the same as the Windows recorder."""
     window, fake = make_window()
     saved(window, fake, qapp, monkeypatch, "들어보자")
-    window.play_selected()
-    assert window._player.playing
-
-    window.play_selected()  # the same button stops it
+    window.open_take(0)
+    qapp.processEvents()
+    assert window._drawer.page == 2  # PLAYBACK
+    assert window._player.loaded
     assert not window._player.playing
+    assert window._drawer.play_glyph == "play"
+
+
+def test_the_play_button_toggles(make_window, qapp, monkeypatch):
+    window, fake = make_window()
+    saved(window, fake, qapp, monkeypatch, "들어보자")
+    window.open_take(0)
+
+    window.toggle_playback()
+    assert window._player.playing
+    assert window._drawer.play_glyph == "pause"
+
+    window.toggle_playback()
+    assert not window._player.playing
+    assert window._player.loaded, "pausing keeps the take in hand"
+    assert window._drawer.play_glyph == "play"
+
+
+def test_going_back_gives_the_device_up(make_window, qapp, monkeypatch):
+    window, fake = make_window()
+    saved(window, fake, qapp, monkeypatch, "돌아가기")
+    window.open_take(0)
+    window.toggle_playback()
+    window.close_take()
+    qapp.processEvents()
+    assert not window._player.loaded
+    assert window._drawer.page == 0  # LIST
+
+
+def test_seeking_moves_the_position(make_window, qapp, monkeypatch):
+    window, fake = make_window(seconds=2.0)
+    saved(window, fake, qapp, monkeypatch, "탐색")
+    window.open_take(0)
+    total = window._player.duration_seconds
+    assert total > 1.0
+
+    window._seek_fraction(0.5)
+    assert window._player.position_seconds == pytest.approx(total / 2, abs=0.05)
 
 
 def test_recording_stops_whatever_was_playing(make_window, qapp, monkeypatch):
     """Listening and recording at once would put the playback into the take."""
     window, fake = make_window()
     saved(window, fake, qapp, monkeypatch, "재생 중")
-    window.play_selected()
+    window.open_take(0)
+    window.toggle_playback()
     assert window._player.playing
 
     window.toggle_recording()
     assert not window._player.playing
+    assert not window._player.loaded
     assert window.recording
 
 

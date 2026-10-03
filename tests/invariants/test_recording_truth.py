@@ -106,6 +106,70 @@ def test_any_number_of_pauses_still_adds_up(tmp_path, pauses):
     assert sf.info(str(path)).duration == pytest.approx(expected, abs=LENGTH_SLACK_S)
 
 
+def test_the_input_gate_never_reaches_the_recording(tmp_path):
+    """The gate decides what the *meter* judges, not what gets kept.
+
+    Below it the detector refuses to name a pitch — that is what stops the
+    display flickering on bow tails and room rumble. A recording is a
+    different thing: a quiet passage is still the performance, and gating one
+    would cut holes in it. So the recorder is handed every block before the
+    detector ever sees one.
+
+    Measured here rather than asserted about the code: a signal entirely under
+    the gate must still come back in full.
+    """
+    from tuner.app.engine import TunerEngine
+    from tuner.core.detector import YinDetector
+
+    detector = YinDetector()
+    quiet = tone(note_to_freq("A", 4), 1.0, instrument="violin") * 0.002
+    assert float(np.sqrt(np.mean(quiet**2))) < detector.input_gate_rms, "not actually quiet"
+
+    rec = recorder.Recorder()
+    readings = []
+    engine = TunerEngine(
+        _StubInput(quiet), readings.append, detector=detector, recorder=rec
+    )
+    engine.start()
+    rec.start()
+    engine._audio.pump()
+    collected = rec.stop()
+
+    assert len(collected) == len(quiet), "the gate ate part of the take"
+    assert float(np.max(np.abs(collected))) == pytest.approx(
+        float(np.max(np.abs(quiet))), rel=1e-6
+    )
+    # and the gate really was doing its job meanwhile
+    assert readings, "no readings at all — the engine never ran"
+    assert all(r.note is None for r in readings), "the gate let a pitch through"
+
+
+class _StubInput:
+    """The audio layer, reduced to 'deliver this signal in blocks'."""
+
+    def __init__(self, signal: np.ndarray, block: int = 256):
+        self._signal = signal
+        self._block = block
+        self._callback = None
+
+    def list_devices(self):
+        return []
+
+    def start(self, device_id, callback) -> int:
+        self._callback = callback
+        return SR
+
+    def stop(self) -> None:
+        self._callback = None
+
+    def refresh_devices(self) -> None:
+        pass
+
+    def pump(self) -> None:
+        for start in range(0, len(self._signal), self._block):
+            self._callback(self._signal[start : start + self._block])
+
+
 # --- 2. the pitch survives the encoding ----------------------------------------
 
 

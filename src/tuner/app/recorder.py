@@ -118,11 +118,60 @@ class Take:
     path: Path
     title: str
     seconds: float
+    recorded_at: datetime | None = None
 
     @property
     def duration_text(self) -> str:
         whole = int(self.seconds)
         return f"{whole // 60}:{whole % 60:02d}"
+
+    @property
+    def when_text(self) -> str:
+        """The line under the title: a date and a wall-clock time."""
+        if self.recorded_at is None:
+            return ""
+        stamp = self.recorded_at
+        hour = stamp.hour
+        half = "오전" if hour < 12 else "오후"
+        twelve = hour % 12 or 12
+        return f"{stamp:%Y-%m-%d} {half} {twelve}:{stamp:%M}"
+
+
+def group_label(recorded_at: datetime | None, now: datetime | None = None) -> str:
+    """Which heading a take sits under.
+
+    Recent takes are the ones people look for, so the near past is named in
+    the words someone would use out loud and only the distant past falls back
+    to a date.
+    """
+    if recorded_at is None:
+        return "날짜 없음"
+    today = (now or datetime.now().astimezone()).date()
+    day = recorded_at.date()
+    days = (today - day).days
+    if days <= 0:
+        return "오늘"
+    if days == 1:
+        return "어제"
+    if days < 7:
+        return f"{days}일 전"
+    if days < 28:
+        return f"{days // 7}주 전"
+    if days < 365:
+        return f"{days // 30}개월 전"
+    return f"{day:%Y년}"
+
+
+def grouped(takes: list[Take], now: datetime | None = None) -> list[tuple[str, list[Take]]]:
+    """`takes` split into (heading, takes) runs, order preserved."""
+    groups: list[tuple[str, list[Take]]] = []
+    for take in takes:
+        label = group_label(take.recorded_at, now)
+        if groups and groups[-1][0] == label:
+            groups[-1][1].append(take)
+        else:
+            groups.append((label, [take]))
+    return groups
 
 
 class Recorder:
@@ -257,7 +306,12 @@ def take_info(path: Path) -> Take | None:
         info = sf.info(str(path))
     except Exception:  # noqa: BLE001 — unreadable files simply are not takes
         return None
-    return Take(path=path, title=path.stem, seconds=float(info.duration))
+    return Take(
+        path=path,
+        title=path.stem,
+        seconds=float(info.duration),
+        recorded_at=datetime.fromtimestamp(path.stat().st_mtime).astimezone(),
+    )
 
 
 def list_takes(directory: Path | None = None) -> list[Take]:

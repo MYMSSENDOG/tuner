@@ -5,7 +5,16 @@ from __future__ import annotations
 import signal
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QSettings, QSignalBlocker, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import (
+    QEvent,
+    QObject,
+    QSettings,
+    QSignalBlocker,
+    Qt,
+    QTimer,
+    QUrl,
+    Signal,
+)
 from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -50,9 +59,11 @@ from tuner.core.metronome import CLICK_AMPLITUDE, DEFAULT_BPM, DEFAULT_SOUND
 # silently wider than its own default. Without it the floor is 294 and the
 # default is reachable, but only for someone who is not carrying a v5
 # geometry.
-# v7: the drawer handle was welded to the right edge, so the default grew by
-# its 11px. A stored v6 geometry would have left the tuner column 11px
-# narrower than it has always been.
+# v7: the recorder arrived. It briefly put a button on the controls row and a
+# handle in the layout, which took the window to 331; both were taken back out
+# (the drawer owns the recorder's controls, and the handle is overlaid), so the
+# floor is what it always was. The key stays bumped: a v6 geometry carried
+# through the wide version would restore the wide size.
 GEOMETRY_KEY = "geometry_v7"
 
 # What the tuner column itself is, unchanged since the meter was drawn: the
@@ -108,21 +119,20 @@ PAUSE_SHORTCUT = "Alt+P"
 STOP_SHORTCUT = "Alt+S"
 DRAWER_SHORTCUT = "Alt+L"
 
-RECORD_IDLE_TEXT = "●"
-RECORD_ACTIVE_TEXT = "●"
-RECORD_BUTTON_W = 22  # the dot and its padding; the row has 16px of slack
-RECORD_IDLE_STYLE = (
-    "background-color: #4a2b2e; border: 1px solid #7d3f43; color: #ff8a8a;"
-    " padding: 2px 0;"
-)
-RECORD_ACTIVE_STYLE = (
-    "background-color: #7a3b3b; border: 1px solid #a35151; color: #ffd9d9;"
-    " padding: 2px 0;"
-)
+# The recorder puts nothing on the tuner's own row. Its controls live in the
+# drawer, the way a voice recorder's do — one big circle in the middle of its
+# own panel. The tuner row is therefore exactly what it was before this
+# feature, and the window's width floor with it.
 # Below this a take is two presses in a row, not a performance. Short enough
 # that a scale fragment still counts.
 MIN_TAKE_SECONDS = 0.5
 RECORDER_TICK_MS = 250  # the elapsed clock; finer than a second so it looks live
+PLAYBACK_TICK_MS = 100  # the seek bar: smooth enough to read as moving
+# The tuner is 190 tall and a list of takes cannot live in that - at 197 the
+# panel showed one and a half rows behind a scrollbar. Opening the drawer
+# therefore also gives the window the height a list needs, and closing it
+# hands that height back, so the tuner alone is never any taller than it was.
+DRAWER_MIN_HEIGHT = 360
 DRAWER_OPEN_KEY = "drawer_open"
 
 
@@ -195,6 +205,9 @@ class MainWindow(QMainWindow):
             self._shortcut(STOP_SHORTCUT, self.stop_recording),
             self._shortcut(DRAWER_SHORTCUT, self.toggle_drawer),
         ]
+        # What the window was before the drawer stretched it, so closing can
+        # put it back rather than leaving the tuner permanently taller.
+        self._height_before_drawer: int | None = None
         self._recorder_timer = QTimer(self)
         self._recorder_timer.setInterval(RECORDER_TICK_MS)
         self._recorder_timer.timeout.connect(self._tick_recorder)
@@ -202,8 +215,8 @@ class MainWindow(QMainWindow):
         # thread and must not touch the device), so the window stops it on a
         # one-shot timer set to the take's own length.
         self._play_timer = QTimer(self)
-        self._play_timer.setSingleShot(True)
-        self._play_timer.timeout.connect(self._playback_finished)
+        self._play_timer.setInterval(PLAYBACK_TICK_MS)
+        self._play_timer.timeout.connect(self._tick_playback)
 
         self._meter = MeterWidget()
         self._bridge.reading.connect(self._on_reading)
@@ -241,16 +254,6 @@ class MainWindow(QMainWindow):
         self._pin_check.setToolTip("Always on top")
         self._pin_check.toggled.connect(self._on_pin_toggled)
         controls.addWidget(self._pin_check)
-
-        # The recorder's one always-visible control. A dot, not a word: the row
-        # is the window's width floor and this is the only thing added to it.
-        self._record_button = QPushButton(RECORD_IDLE_TEXT)
-        self._record_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._record_button.setToolTip(f"녹음 ({RECORD_SHORTCUT})")
-        self._record_button.setFixedWidth(RECORD_BUTTON_W)
-        self._record_button.setStyleSheet(RECORD_IDLE_STYLE)
-        self._record_button.clicked.connect(self.toggle_recording)
-        controls.addWidget(self._record_button)
 
         self._session_button = QPushButton(SESSION_IDLE_TEXT)
         self._session_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -309,13 +312,22 @@ class MainWindow(QMainWindow):
         shell_layout.setContentsMargins(0, 0, 0, 0)
         shell_layout.setSpacing(0)
         shell_layout.addWidget(central, 1)
-        self._drawer_handle = DrawerHandle()
+        # Drawn *over* the tuner's right edge rather than beside it. In the
+        # layout it cost 11px of window for ever; overlaid it costs none, and
+        # the strip it covers is the empty margin outside the meter's arc.
+        self._tuner_column = central
+        self._drawer_handle = DrawerHandle(central)
         self._drawer_handle.toggled.connect(self.toggle_drawer)
-        shell_layout.addWidget(self._drawer_handle)
+        self._drawer_handle.raise_()
+        central.installEventFilter(self)
         self._drawer = RecordingsDrawer()
+        self._drawer.record_pressed.connect(self.toggle_recording)
         self._drawer.pause_pressed.connect(self.toggle_pause)
         self._drawer.stop_pressed.connect(self.stop_recording)
-        self._drawer.play_pressed.connect(self.play_selected)
+        self._drawer.open_pressed.connect(self.open_take)
+        self._drawer.back_pressed.connect(self.close_take)
+        self._drawer.play_pressed.connect(self.toggle_playback)
+        self._drawer.seeked.connect(self._seek_fraction)
         self._drawer.rename_pressed.connect(self.rename_selected)
         self._drawer.delete_pressed.connect(self.delete_selected)
         self._drawer.folder_pressed.connect(self._open_recordings_folder)
@@ -325,9 +337,23 @@ class MainWindow(QMainWindow):
         central.setStyleSheet("background-color: #3b4252; color: #c7d2e3;")
         shell.setStyleSheet("background-color: #3b4252; color: #c7d2e3;")
         self.setCentralWidget(shell)
-        self.resize(TUNER_WIDTH + HANDLE_WIDTH, 190)
+        self.resize(TUNER_WIDTH, 190)
+        self._place_handle()
         self.refresh_takes()
         self._restore_settings()
+
+    def eventFilter(self, watched, event):
+        """Keep the overlaid handle on the column's right edge as it resizes."""
+        if event.type() == QEvent.Type.Resize and watched is self._tuner_column:
+            self._place_handle()
+        return super().eventFilter(watched, event)
+
+    def _place_handle(self) -> None:
+        column = self._tuner_column
+        self._drawer_handle.setGeometry(
+            column.width() - HANDLE_WIDTH, 0, HANDLE_WIDTH, column.height()
+        )
+        self._drawer_handle.raise_()
 
     def start(self) -> None:
         self._engine.start(self._device_combo.currentData())
@@ -478,6 +504,13 @@ class MainWindow(QMainWindow):
         self._drawer.setVisible(is_open)
         self._drawer_handle.set_open(is_open)
         if not self.isMaximized() and not self.isFullScreen():
+            height = self.height()
+            if is_open and height < DRAWER_MIN_HEIGHT:
+                self._height_before_drawer = height
+                height = DRAWER_MIN_HEIGHT
+            elif not is_open and self._height_before_drawer is not None:
+                height = self._height_before_drawer
+                self._height_before_drawer = None
             # Showing the drawer raises the window's *explicit* minimum width
             # (Qt writes the layout's minimum onto the window), and hiding it
             # again does not lower it — so a resize would be clamped and the
@@ -486,23 +519,20 @@ class MainWindow(QMainWindow):
             # pass, which is why reopening lands on exactly the same number.
             self.setMinimumWidth(0)
             delta = DRAWER_WIDTH if is_open else -DRAWER_WIDTH
-            self.resize(was + delta, self.height())
+            self.resize(was + delta, height)
 
     def toggle_drawer(self) -> None:
         self.set_drawer_open(not self.drawer_open)
 
     def toggle_recording(self) -> None:
-        """Alt+R / the dot. Starts a take and opens the drawer with it."""
+        """Alt+R, or the drawer's mic. Starts a take and shows it."""
         if self.recording:
             self.stop_recording()
             return
         self._player.stop()  # listening and recording are not done at once
         self._recorder.start()
-        self._record_button.setText(RECORD_ACTIVE_TEXT)
-        self._record_button.setStyleSheet(RECORD_ACTIVE_STYLE)
-        self._drawer.show_recording(True)
-        self._drawer.set_paused(False)
-        self._drawer.set_elapsed(0.0)
+        self._drawer.show_recording()
+        self._drawer.say("")
         self._recorder_timer.start()
         self.set_drawer_open(True)
 
@@ -514,15 +544,13 @@ class MainWindow(QMainWindow):
         self._drawer.set_paused(self._recorder.toggle_pause())
 
     def stop_recording(self) -> Path | None:
-        """Alt+S. Ends the take and asks what to call it."""
+        """Alt+S, or the drawer's stop. Ends the take and asks what to call it."""
         if not self.recording:
             return None
         signal = self._recorder.stop()
         sample_rate = self._recorder.sample_rate or self._engine_sample_rate()
         self._recorder_timer.stop()
-        self._record_button.setText(RECORD_IDLE_TEXT)
-        self._record_button.setStyleSheet(RECORD_IDLE_STYLE)
-        self._drawer.show_recording(False)
+        self._drawer.show_list()
         return self._offer_to_save(signal, sample_rate)
 
     def _engine_sample_rate(self) -> int:
@@ -535,12 +563,12 @@ class MainWindow(QMainWindow):
         if seconds < MIN_TAKE_SECONDS:
             # Too short to be a performance - almost certainly two presses in a
             # row. Saying so beats opening a dialog about nothing.
-            self._flash(f"녹음이 너무 짧습니다 ({seconds:.1f}초)", ok=False)
+            self._drawer.say(f"녹음이 너무 짧습니다 ({seconds:.1f}초)", ok=False)
             return None
         a4_hz = float(self._a4_spin.value())
         dialog = SaveTakeDialog(recorder.default_title(), seconds, a4_hz, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
-            self._flash("녹음을 버렸습니다")
+            self._drawer.say("녹음을 버렸습니다")
             return None
         try:
             path = recorder.save_take(
@@ -551,24 +579,23 @@ class MainWindow(QMainWindow):
                 a4_hz=a4_hz,
             )
         except (RuntimeError, OSError) as error:
-            self._flash(f"녹음 저장 실패: {error}", ok=False)
+            self._drawer.say(f"녹음 저장 실패: {error}", ok=False)
             return None
         self.refresh_takes()
-        self._flash(f"저장됨 - {path.name}")
+        self._drawer.say(f"저장됨 — {path.stem}")
         return path
 
     # --- the list of takes --------------------------------------------------
 
     def refresh_takes(self, select: int = 0) -> None:
         self._takes = recorder.list_takes(self._recordings_dir)
-        self._drawer.set_takes(
-            [(take.title, take.duration_text) for take in self._takes], keep=select
-        )
-        if self._takes:
-            size = recorder.human_size(recorder.total_bytes(self._takes))
-            self._drawer.set_footer(f"{size} · {self._recordings_dir}")
-        else:
-            self._drawer.set_footer(f"아직 녹음이 없습니다 · {self._recordings_dir}")
+        rows = []
+        for heading, takes in recorder.grouped(self._takes):
+            for i, take in enumerate(takes):
+                rows.append(
+                    (heading if i == 0 else "", take.title, take.when_text, take.duration_text)
+                )
+        self._drawer.set_takes(rows, keep=select)
 
     def _selected_take(self):
         index = self._drawer.selected_index
@@ -576,27 +603,54 @@ class MainWindow(QMainWindow):
             return index, self._takes[index]
         return -1, None
 
-    def play_selected(self) -> None:
-        """Toggle: pressing it while that take plays stops it."""
-        _, take = self._selected_take()
-        if take is None:
-            return
-        if self._player.playing:
-            self._player.stop()
-            self._play_timer.stop()
-            self._flash("재생 중지")
-            return
-        try:
-            seconds = self._player.play_file(take.path)
-        except (RuntimeError, OSError) as error:
-            self._flash(f"재생 실패: {error}", ok=False)
-            return
-        self._flash(f"재생 중 - {take.title}")
-        self._play_timer.start(max(int(seconds * 1000), 100))
+    # --- listening ------------------------------------------------------------
 
-    def _playback_finished(self) -> None:
-        self._play_timer.stop()
+    def open_take(self, index: int) -> None:
+        """A row was clicked: load it and show the playback page.
+
+        Loaded, not started. The Windows recorder opens a take paused at zero
+        and so does this - the row that was clicked is the one you meant to
+        look at, which is not always the one you meant to hear.
+        """
+        if not 0 <= index < len(self._takes):
+            return
+        take = self._takes[index]
+        try:
+            seconds = self._player.load_file(take.path)
+        except (RuntimeError, OSError) as error:
+            self._drawer.say(f"열 수 없습니다: {error}", ok=False)
+            return
+        self._drawer.show_playback(take.title, take.when_text, seconds)
+        self._drawer.say("")
+        self._play_timer.start()
+
+    def close_take(self) -> None:
+        """The back arrow."""
         self._player.stop()
+        self._play_timer.stop()
+        self._drawer.show_list()
+
+    def toggle_playback(self) -> None:
+        if not self._player.loaded:
+            return
+        self._player.toggle()
+        self._drawer.set_playing(self._player.playing)
+
+    def _seek_fraction(self, fraction: float) -> None:
+        self._player.seek_seconds(fraction * self._player.duration_seconds)
+        self._tick_playback()
+
+    def _tick_playback(self) -> None:
+        """Drives the clock and the seek bar, and notices the end.
+
+        Rendering cannot report the end itself - touching the device from its
+        own callback is how PortAudio deadlocks - so the view's own timer is
+        what sees `playing` go false and puts the button back.
+        """
+        self._drawer.set_position(
+            self._player.position_seconds, self._player.duration_seconds
+        )
+        self._drawer.set_playing(self._player.playing)
 
     def rename_selected(self) -> None:
         index, take = self._selected_take()
@@ -605,12 +659,19 @@ class MainWindow(QMainWindow):
         new_title, ok = QInputDialog.getText(self, "이름 바꾸기", "제목", text=take.title)
         if not ok or not new_title.strip():
             return
+        playing_this = self._player.loaded and self._player.path == take.path
+        if playing_this:
+            self._player.stop()  # the file is about to move out from under it
+            self._play_timer.stop()
         try:
-            recorder.rename_take(take.path, new_title.strip())
+            renamed = recorder.rename_take(take.path, new_title.strip())
         except OSError as error:
-            self._flash(f"이름 바꾸기 실패: {error}", ok=False)
+            self._drawer.say(f"이름 바꾸기 실패: {error}", ok=False)
             return
         self.refresh_takes(select=index)
+        self._drawer.say(f"이름 바꿈 — {renamed.stem}")
+        if playing_this:
+            self._drawer.show_list()
 
     def delete_selected(self) -> None:
         index, take = self._selected_take()
@@ -625,21 +686,24 @@ class MainWindow(QMainWindow):
         )
         if answer != QMessageBox.StandardButton.Discard:
             return
-        if self._player.playing:
+        if self._player.loaded:
             self._player.stop()
             self._play_timer.stop()
         try:
             take.path.unlink()
         except OSError as error:
-            self._flash(f"삭제 실패: {error}", ok=False)
+            self._drawer.say(f"삭제 실패: {error}", ok=False)
             return
         self.refresh_takes(select=max(index - 1, 0))
-        self._flash(f"삭제됨 - {take.title}")
+        self._drawer.show_list()
+        self._drawer.say(f"삭제됨 — {take.title}")
 
     def _open_recordings_folder(self) -> None:
         self._recordings_dir.mkdir(parents=True, exist_ok=True)
-        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._recordings_dir))):
-            self._flash(f"폴더를 열지 못했습니다 - {self._recordings_dir}", ok=False)
+        if QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._recordings_dir))):
+            self._drawer.say(str(self._recordings_dir))
+        else:
+            self._drawer.say(f"폴더를 열지 못했습니다 — {self._recordings_dir}", ok=False)
 
     def _tick_recorder(self) -> None:
         self._drawer.set_elapsed(self._recorder.seconds)
