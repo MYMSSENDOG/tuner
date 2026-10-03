@@ -212,9 +212,11 @@ class MainWindow(QMainWindow):
         self._recorder_timer = QTimer(self)
         self._recorder_timer.setInterval(RECORDER_TICK_MS)
         self._recorder_timer.timeout.connect(self._tick_recorder)
-        # Playback has no end-of-stream callback (rendering runs on the audio
-        # thread and must not touch the device), so the window stops it on a
-        # one-shot timer set to the take's own length.
+        # Drives the playback page's clock and seek bar, and notices the end of
+        # a take - rendering runs on the audio thread and must not touch the
+        # device, so the end is seen here rather than reported from there. It
+        # lives exactly as long as a take is loaded: `_put_take_away` is the
+        # one place that ends both.
         self._play_timer = QTimer(self)
         self._play_timer.setInterval(PLAYBACK_TICK_MS)
         self._play_timer.timeout.connect(self._tick_playback)
@@ -367,7 +369,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         if self.recording:  # a performance is never dropped on the way out
             self.stop_recording()
-        self._player.stop()
+        self._put_take_away()
         if self._capture.recording:  # never drop what was being recorded
             self._session_timer.stop()
             try:
@@ -535,7 +537,7 @@ class MainWindow(QMainWindow):
         if self.recording:
             self.stop_recording()
             return
-        self._player.stop()  # listening and recording are not done at once
+        self._put_take_away()  # listening and recording are not done at once
         try:
             # the reference the take *began* at goes into its signature
             self._recorder.start(a4_hz=float(self._a4_spin.value()))
@@ -637,9 +639,19 @@ class MainWindow(QMainWindow):
 
     def close_take(self) -> None:
         """The back arrow."""
-        self._player.stop()
-        self._play_timer.stop()
+        self._put_take_away()
         self._drawer.show_list()
+
+    def _put_take_away(self) -> None:
+        """Give the device back and stop the clock that was drawing it.
+
+        The player and its tick are one thing. They used to be stopped side by
+        side at each place a take was put away, and the place that starts a
+        recording stopped only the player - leaving the tick redrawing a hidden
+        page for the whole take.
+        """
+        self._play_timer.stop()
+        self._player.stop()
 
     def toggle_playback(self) -> None:
         if not self._player.loaded:
@@ -672,8 +684,7 @@ class MainWindow(QMainWindow):
             return
         playing_this = self._player.loaded and self._player.path == take.path
         if playing_this:
-            self._player.stop()  # the file is about to move out from under it
-            self._play_timer.stop()
+            self._put_take_away()  # the file is about to move out from under it
         try:
             renamed = recorder.rename_take(take.path, new_title.strip())
         except OSError as error:
@@ -697,9 +708,7 @@ class MainWindow(QMainWindow):
         )
         if answer != QMessageBox.StandardButton.Discard:
             return
-        if self._player.loaded:
-            self._player.stop()
-            self._play_timer.stop()
+        self._put_take_away()
         try:
             take.path.unlink()
         except OSError as error:

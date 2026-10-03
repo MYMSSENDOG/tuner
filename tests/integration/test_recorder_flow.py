@@ -295,6 +295,33 @@ def test_the_play_button_toggles(make_window, qapp, monkeypatch):
     assert window._drawer.play_glyph == "play"
 
 
+@pytest.mark.parametrize("how", ["back", "record", "delete"])
+def test_putting_a_take_away_stops_its_clock_too(make_window, qapp, monkeypatch, how):
+    """The playback tick and the player are one thing to put away. Starting a
+    recording used to stop the player and leave its tick redrawing a hidden
+    page ten times a second for the rest of the take."""
+    window, fake = make_window()
+    saved(window, fake, qapp, monkeypatch, "치우기")
+    window.open_take(0)
+    window.toggle_playback()
+    assert window._play_timer.isActive()
+
+    if how == "back":
+        window.close_take()
+    elif how == "record":
+        window.toggle_recording()
+    else:
+        monkeypatch.setattr(
+            QMessageBox,
+            "question",
+            staticmethod(lambda *a, **k: QMessageBox.StandardButton.Discard),
+        )
+        window.delete_selected()
+
+    assert not window._player.loaded
+    assert not window._play_timer.isActive(), f"{how} left the playback tick running"
+
+
 def test_going_back_gives_the_device_up(make_window, qapp, monkeypatch):
     window, fake = make_window()
     saved(window, fake, qapp, monkeypatch, "돌아가기")
