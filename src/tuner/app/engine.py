@@ -23,6 +23,7 @@ from tuner.core.tracker import PitchTracker, State
 
 if TYPE_CHECKING:  # the capture imports this module, so keep the edge one-way
     from tuner.app.capture import FieldCapture
+    from tuner.app.recorder import Recorder
 
 DIGITAL_SILENCE_DBFS = -120.0  # exact zeros: no OS permission / dead device
 
@@ -67,6 +68,7 @@ class TunerEngine:
         detector: PitchDetector | None = None,
         tracker_factory: Callable[[float], PitchTracker] | None = None,
         capture: FieldCapture | None = None,
+        recorder: Recorder | None = None,
         interference: InterferenceSource | None = None,
         clock: Callable[[], float] = time.monotonic,
     ):
@@ -74,6 +76,11 @@ class TunerEngine:
         self._on_reading = on_reading
         # optional rolling recorder (app/capture.py); None costs nothing
         self._capture = capture
+        # optional take recorder (app/recorder.py). A second sink rather than a
+        # mode of the first: one writes developer reports, the other writes the
+        # player's performance, and they run at the same time without knowing
+        # about each other.
+        self._recorder = recorder
         # optional: something that knows when the app's own sound (the
         # metronome) was audible to the microphone (core/interference.py)
         self._interference = interference
@@ -149,6 +156,8 @@ class TunerEngine:
     def _on_block(self, block: np.ndarray) -> None:
         if self._capture is not None:
             self._capture.push_block(block, self._sr)
+        if self._recorder is not None:
+            self._recorder.push_block(block, self._sr)
         rms = float(np.sqrt(np.mean(block * block)))
         self._level_dbfs = 20.0 * math.log10(rms) if rms > 0.0 else DIGITAL_SILENCE_DBFS
         onset = self._track_floor(self._level_dbfs)
