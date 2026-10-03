@@ -22,6 +22,7 @@ from tests.fakes import FakeAudioInput, FakeAudioOutput
 from tests.synth import tone
 from tuner.app import main_window as mw
 from tuner.app.drawer_handle import HEIGHT as HANDLE_HEIGHT
+from tuner.app.drawer_handle import HIT_MARGIN
 from tuner.app.drawer_handle import WIDTH as HANDLE_WIDTH
 from tuner.app.recordings_drawer import WIDTH as DRAWER_WIDTH
 from tuner.app.recordings_drawer import RecordingsDrawer, clock_text, short_clock
@@ -138,13 +139,35 @@ def test_clicking_the_handle_opens_and_closes(window, qapp):
     assert not window.drawer_open
 
 
-def test_the_handle_ignores_clicks_far_from_the_tab(window, qapp):
-    """It is 44px of tab on a full-height edge; the rest is the meter."""
+def test_the_handle_covers_only_its_tab(window, qapp):
+    """Drawn over the column's edge, it must not own that edge.
+
+    It used to be a full-height strip: everything under the rightmost 11px of
+    the column - the last ~2dB of the input gate's travel on the level bar, the
+    end of the trace - was the handle's, not theirs. Widgets underneath are
+    siblings, so no event ever passed through to them.
+    """
+    column = tuner_column(window)
     handle = window._drawer_handle
-    QTest.mouseClick(handle, Qt.MouseButton.LeftButton, pos=QPoint(HANDLE_WIDTH // 2, 1))
+    assert handle.height() <= HANDLE_HEIGHT + 2 * HIT_MARGIN
+
+    edge_x = column.width() - HANDLE_WIDTH // 2 - 1
+    for widget in (window._level_bar, window._trace):
+        point = widget.mapTo(column, QPoint(widget.width() - 3, widget.height() // 2))
+        assert column.childAt(point) is not handle, (
+            f"{type(widget).__name__}'s right edge is under the handle"
+        )
+    top = QPoint(edge_x, 2)
+    assert column.childAt(top) is not handle
+
+
+def test_the_tab_stays_centred_as_the_window_grows(window, qapp):
+    column = tuner_column(window)
+    handle = window._drawer_handle
+    window.set_drawer_open(True)
     qapp.processEvents()
-    assert not window.drawer_open
-    assert handle.height() > HANDLE_HEIGHT, "otherwise there is no 'far' to test"
+    centre = handle.y() + handle.height() // 2
+    assert abs(centre - column.height() // 2) <= 1
 
 
 def test_the_handle_opens_the_list_not_a_recording(window, qapp):

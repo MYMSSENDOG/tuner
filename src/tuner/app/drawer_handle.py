@@ -12,7 +12,10 @@ belongs to the window, and it opens that way". Four shapes were drawn at real
 size and compared; the waisted one was prettier at 3x magnification and nearly
 straight at 11px, which is the size that counts (docs/recording.md).
 
-The hit area is wider than the paint. Nobody should have to hit 11px.
+The hit area is a little taller than the paint (nobody should have to hit
+the exact pixel), and the widget is exactly that hit area and no more. It is
+drawn over the tuner column's right edge, and anything it covers is taken
+from the widgets underneath: they are siblings, so no event passes through.
 """
 
 from __future__ import annotations
@@ -21,9 +24,13 @@ from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
-WIDTH = 11  # painted width; the widget is this wide and the window grows by it
-HEIGHT = 44  # vertically centred, tall enough to find without being a column
+WIDTH = 11  # painted width, and the widget's width
+HEIGHT = 44  # the tab; tall enough to find without being a column
 HIT_MARGIN = 4  # extra pixels above and below that still count as a press
+# The widget's whole size. It was once a full-height strip that only *painted*
+# a tab in the middle - and swallowed every click on the last 11px of the level
+# bar and the trace beneath it.
+OUTER_HEIGHT = HEIGHT + 2 * HIT_MARGIN
 
 BODY = QColor("#4a5568")
 BODY_ACTIVE = QColor("#5d6c84")
@@ -48,7 +55,7 @@ class DrawerHandle(QWidget):
         super().__init__(parent)
         self._open = False
         self._active = False
-        self.setFixedWidth(WIDTH)
+        self.setFixedSize(WIDTH, OUTER_HEIGHT)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip("녹음 목록 (Alt+L)")
 
@@ -57,14 +64,10 @@ class DrawerHandle(QWidget):
         self.update()
 
     def _tab_top(self) -> int:
-        return max((self.height() - HEIGHT) // 2, 0)
-
-    def _in_tab(self, y: float) -> bool:
-        top = self._tab_top()
-        return top - HIT_MARGIN <= y <= top + HEIGHT + HIT_MARGIN
+        return HIT_MARGIN
 
     def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self._in_tab(event.position().y()):
+        if event.button() == Qt.MouseButton.LeftButton:
             self.toggled.emit()
 
     def enterEvent(self, event) -> None:
@@ -79,7 +82,7 @@ class DrawerHandle(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         top = float(self._tab_top())
-        height = float(min(HEIGHT, self.height()))
+        height = float(HEIGHT)
 
         # Left edge flush with the window (drawn 1px off-widget so its border
         # does not show), right edge one half-ellipse: 11 across, half the tab

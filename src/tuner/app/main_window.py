@@ -33,7 +33,6 @@ from PySide6.QtWidgets import (
 
 from tuner.app import recorder
 from tuner.app.capture import MAX_SESSION_SECONDS, RING_SECONDS, FieldCapture
-from tuner.app.drawer_handle import WIDTH as HANDLE_WIDTH
 from tuner.app.drawer_handle import DrawerHandle
 from tuner.app.engine import DIGITAL_SILENCE_DBFS, TunerEngine, TunerReading
 from tuner.app.level_widget import InputLevelBar
@@ -349,11 +348,16 @@ class MainWindow(QMainWindow):
         return super().eventFilter(watched, event)
 
     def _place_handle(self) -> None:
+        """The tab sits on the column's right edge at its vertical centre.
+
+        Only moved, never resized: the handle is its own fixed size, so the
+        strip of column above and below it stays the meter's, the level bar's
+        and the trace's.
+        """
         column = self._tuner_column
-        self._drawer_handle.setGeometry(
-            column.width() - HANDLE_WIDTH, 0, HANDLE_WIDTH, column.height()
-        )
-        self._drawer_handle.raise_()
+        handle = self._drawer_handle
+        handle.move(column.width() - handle.width(), (column.height() - handle.height()) // 2)
+        handle.raise_()
 
     def start(self) -> None:
         self._engine.start(self._device_combo.currentData())
