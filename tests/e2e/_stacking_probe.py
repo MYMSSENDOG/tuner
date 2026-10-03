@@ -65,6 +65,15 @@ def main() -> int:
     if pinned_top is window and unpinned_top is rival:
         print("OK: pinned window stayed above, unpinned window was covered")
         return 0
+    if pinned_top is None and unpinned_top is None:
+        # Nothing at all was found at that point, so neither window was mapped
+        # - a locked or otherwise non-interactive desktop. Broken stacking
+        # looks different: the rival is found on top in the pinned case too.
+        # This is the same self-skipping rule the rest of e2e follows; it was
+        # added after the probe started failing on a locked workstation, which
+        # reproduced identically on a commit predating the window's last change.
+        print("SKIP: no window reached the desktop (locked or no session)")
+        return 77
     print(f"FAIL: pinned_top={pinned_top!r}, unpinned_top={unpinned_top!r}")
     return 1
 
