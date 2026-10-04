@@ -463,3 +463,39 @@ def test_hearing_back_is_offered_only_while_paused(make_window, qapp):
     fake.pump()
     window.toggle_preview()  # recording, not paused
     assert not window._player.loaded
+
+
+# --- the take's intonation on the playback page ---------------------------------
+
+
+def wait_for_track(window, qapp, timeout=20.0):
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        qapp.processEvents()
+        track = window._drawer.pitch_track
+        if track is not None and track.complete:
+            return track
+        time.sleep(0.02)
+    return None
+
+
+def test_opening_a_take_draws_its_intonation(make_window, qapp, monkeypatch):
+    window, fake = make_window()
+    saved(window, fake, qapp, monkeypatch, "음정")
+    window.open_take(0)
+    track = wait_for_track(window, qapp)
+    assert track is not None, "the analysis never completed"
+    assert track.duration_s == pytest.approx(window._takes[0].seconds, abs=0.05)
+    assert any(label == "A4" for label in track.labels)
+
+
+def test_a_closed_takes_analysis_never_draws_over_the_open_one(make_window, qapp, monkeypatch):
+    window, fake = make_window(seconds=1.2)
+    saved(window, fake, qapp, monkeypatch, "짧은 것")
+    window.open_take(0)
+    stale = window._analysis_generation
+    window.close_take()
+    window._on_pitch_track(stale, object())  # a late result from the old take
+    assert window._drawer.pitch_track is None

@@ -486,6 +486,20 @@ def signature_of(path: Path) -> str | None:
         return None
 
 
+def take_a4(path: Path, default: float = 440.0) -> float:
+    """The reference pitch the take was recorded against, from its signature.
+
+    A take is judged against the A4 it was played to, not whatever the tuner
+    happens to be set to when it is heard back - otherwise retuning the app
+    would make an old take look out of tune.
+    """
+    try:
+        with sf.SoundFile(str(path)) as handle:
+            return float(json.loads(handle.comment).get("a4_hz", default))
+    except Exception:  # noqa: BLE001 - unsigned, unreadable or no comment: the default
+        return default
+
+
 def is_ours(path: Path) -> bool:
     """Did this program write this file?
 

@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 
 from tuner.app.context_menu import modern_menu
 from tuner.app.round_button import MIC, PAUSE, PLAY, RING_SPAN, STOP, RoundButton
+from tuner.app.take_pitch_view import TakePitchView
 
 WIDTH = 280  # a title, a date and a duration on one line, with room to read
 
@@ -375,6 +376,12 @@ class RecordingsDrawer(QWidget):
         head.addSpacing(self._back.sizeHint().width())  # keeps the title centred
         layout.addLayout(head)
 
+        # the take's intonation, under the sound of it (app/take_pitch_view.py)
+        layout.addSpacing(4)
+        self._pitch = TakePitchView()
+        self._pitch.seeked.connect(self.seeked.emit)
+        layout.addWidget(self._pitch)
+
         layout.addStretch(1)
         tray = QHBoxLayout()
         self._play = RoundButton(PLAY, PLAY_DIAMETER, PLAY_FILL, PLAY_GLYPH)
@@ -446,6 +453,7 @@ class RecordingsDrawer(QWidget):
     def show_playback(self, title: str, when: str, seconds: float) -> None:
         self._play_title.setText(title)
         self._play_when.setText(when)
+        self._pitch.set_track(None)  # "분석 중" until the first readings arrive
         self._total.setText(short_clock(seconds))
         self.set_position(0.0, seconds)
         self.set_playing(False)
@@ -524,7 +532,18 @@ class RecordingsDrawer(QWidget):
     def set_playing(self, playing: bool) -> None:
         self._play.set_glyph(PAUSE if playing else PLAY)
 
+    def set_pitch_track(self, track) -> None:
+        self._pitch.set_track(track)
+
+    def set_pitch_message(self, text: str) -> None:
+        self._pitch.set_message(text)
+
+    @property
+    def pitch_track(self):
+        return self._pitch.track
+
     def set_position(self, seconds: float, total: float) -> None:
+        self._pitch.set_position(seconds)
         self._at.setText(short_clock(seconds))
         if self._seek.isSliderDown():
             return  # do not fight a finger that is dragging it

@@ -65,6 +65,7 @@ QT_FREE_MODULES = {
     "tuner.app.capture",
     "tuner.app.meter_model",
     "tuner.app.metronome",
+    "tuner.app.take_analysis",  # drives the engine offline, on a worker thread
 }
 
 # docs/ARCHITECTURE.md "향후 방향": the metronome is a sibling feature, not a

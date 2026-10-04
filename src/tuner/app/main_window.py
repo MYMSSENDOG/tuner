@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import signal
+import threading
 from pathlib import Path
 
+import soundfile as sf
 from PySide6.QtCore import (
     QEvent,
     QObject,
@@ -31,7 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from tuner.app import recorder
+from tuner.app import recorder, take_analysis
 from tuner.app.capture import MAX_SESSION_SECONDS, RING_SECONDS, FieldCapture
 from tuner.app.drawer_handle import DrawerHandle
 from tuner.app.engine import DIGITAL_SILENCE_DBFS, TunerEngine, TunerReading
@@ -43,6 +45,7 @@ from tuner.app.metronome_widget import MetronomeBar
 from tuner.app.recordings_drawer import WIDTH as DRAWER_WIDTH
 from tuner.app.recordings_drawer import RecordingsDrawer
 from tuner.app.save_take_dialog import SaveTakeDialog
+from tuner.app.take_analysis import PitchTrack
 from tuner.app.take_player import TakePlayer
 from tuner.app.trace_widget import PitchTraceWidget
 from tuner.audio.input import AudioInput
@@ -135,10 +138,22 @@ DRAWER_MIN_HEIGHT = 360
 DRAWER_OPEN_KEY = "drawer_open"
 
 
+def _cache_key(path: Path) -> tuple[str, int, int] | None:
+    """A take's identity for the analysis cache: renaming changes the path and
+    re-recording changes the size and time, so a stale graph cannot be served."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return (str(path), stat.st_mtime_ns, stat.st_size)
+
+
 class _ReadingBridge(QObject):
     """Marshals engine readings from the audio thread onto the GUI thread."""
 
     reading = Signal(object)
+    # (generation, PitchTrack): a take's analysis, from its worker thread
+    pitch_track = Signal(int, object)
 
 
 class _DeviceComboBox(QComboBox):
@@ -223,6 +238,13 @@ class MainWindow(QMainWindow):
 
         self._meter = MeterWidget()
         self._bridge.reading.connect(self._on_reading)
+        self._bridge.pitch_track.connect(self._on_pitch_track)
+        # Each opened take gets a generation number; an analysis still running
+        # for a take that has since been closed sees the number change and
+        # stops, and anything it already sent is ignored. Without it a slow
+        # analysis of the last take could draw over the one now open.
+        self._analysis_generation = 0
+        self._pitch_cache: dict[tuple[str, int, int], PitchTrack] = {}
 
         controls = QHBoxLayout()
         controls.setContentsMargins(6, 4, 6, 2)
@@ -510,24 +532,28 @@ class MainWindow(QMainWindow):
         # minimum width, and Qt grows the window to meet it on the spot. Adding
         # the drawer's width to the number read afterwards would therefore add
         # it twice (measured: 331 -> 731 instead of 531).
-        was = self.width()
+        # Both measured *before* the panel appears, for the same reason: the
+        # moment it is shown Qt grows the window to the panel's minimum. Height
+        # was once read afterwards and so remembered the drawer's 250 as the
+        # tuner's own height, which closing then dutifully restored.
+        was, height = self.width(), self.height()
         self._drawer.setVisible(is_open)
         self._drawer_handle.set_open(is_open)
         if not self.isMaximized() and not self.isFullScreen():
-            height = self.height()
             if is_open and height < DRAWER_MIN_HEIGHT:
                 self._height_before_drawer = height
                 height = DRAWER_MIN_HEIGHT
             elif not is_open and self._height_before_drawer is not None:
                 height = self._height_before_drawer
                 self._height_before_drawer = None
-            # Showing the drawer raises the window's *explicit* minimum width
+            # Showing the drawer raises the window's *explicit* minimum size
             # (Qt writes the layout's minimum onto the window), and hiding it
             # again does not lower it — so a resize would be clamped and the
-            # window would stay open-width forever. Dropping the minimum lets
+            # window would stay open-sized forever. Dropping the minimum lets
             # the resize through; the layout writes its own back on the next
-            # pass, which is why reopening lands on exactly the same number.
-            self.setMinimumWidth(0)
+            # pass, which is why reopening lands on exactly the same numbers.
+            # Both axes, now that the drawer has a minimum height of its own.
+            self.setMinimumSize(0, 0)
             delta = DRAWER_WIDTH if is_open else -DRAWER_WIDTH
             self.resize(was + delta, height)
 
@@ -665,6 +691,53 @@ class MainWindow(QMainWindow):
         self._drawer.show_playback(take.title, take.when_text, seconds)
         self._drawer.say("")
         self._play_timer.start()
+        self._analyse_take(take.path)
+
+    # --- the take's intonation ------------------------------------------------
+
+    def _analyse_take(self, path: Path) -> None:
+        """Draw what the meter would have shown for this take.
+
+        From the cache if it was already done, otherwise on a worker thread:
+        the analysis runs the real engine at about three times real time, far
+        too slow for the GUI thread, and the graph fills in as it goes.
+        """
+        self._analysis_generation += 1
+        generation = self._analysis_generation
+        key = _cache_key(path)
+        cached = self._pitch_cache.get(key) if key else None
+        if cached is not None:
+            self._drawer.set_pitch_track(cached)
+            return
+
+        def still_wanted() -> bool:
+            return self._analysis_generation == generation
+
+        def work() -> None:
+            try:
+                signal_, sr = sf.read(str(path), dtype="float64", always_2d=True)
+                track = take_analysis.analyse(
+                    signal_.mean(axis=1),
+                    int(sr),
+                    recorder.take_a4(path),
+                    on_progress=lambda t: self._bridge.pitch_track.emit(generation, t),
+                    should_stop=lambda: not still_wanted(),
+                )
+            except Exception as error:  # noqa: BLE001 - reported on the graph
+                self._bridge.pitch_track.emit(generation, error)
+                return
+            if track is not None and key is not None:
+                self._pitch_cache[key] = track
+
+        threading.Thread(target=work, name="take-analysis", daemon=True).start()
+
+    def _on_pitch_track(self, generation: int, track) -> None:
+        if generation != self._analysis_generation:
+            return  # a take that is no longer open
+        if isinstance(track, Exception):
+            self._drawer.set_pitch_message("음정을 분석하지 못했습니다")
+            return
+        self._drawer.set_pitch_track(track)
 
     def close_take(self) -> None:
         """The back arrow."""
@@ -682,6 +755,7 @@ class MainWindow(QMainWindow):
         self._play_timer.stop()
         self._player.stop()
         self._drawer.set_previewing(False)
+        self._analysis_generation += 1  # whatever was being analysed, stop
 
     def toggle_playback(self) -> None:
         if not self._player.loaded:
