@@ -326,6 +326,7 @@ class MainWindow(QMainWindow):
         self._drawer = RecordingsDrawer()
         self._drawer.record_pressed.connect(self.toggle_recording)
         self._drawer.pause_pressed.connect(self.toggle_pause)
+        self._drawer.preview_pressed.connect(self.toggle_preview)
         self._drawer.stop_pressed.connect(self.stop_recording)
         self._drawer.open_pressed.connect(self.open_take)
         self._drawer.back_pressed.connect(self.close_take)
@@ -555,12 +556,35 @@ class MainWindow(QMainWindow):
         not applicable says nothing rather than complaining."""
         if not self.recording:
             return
+        if self.paused:
+            # Resuming: whatever is being heard back stops *first*. Otherwise
+            # the speakers would play the take into the microphone that is
+            # recording it.
+            self._put_take_away()
         self._drawer.set_paused(self._recorder.toggle_pause())
+
+    def toggle_preview(self) -> None:
+        """Hear the paused take up to where it was paused, or stop hearing it."""
+        if not (self.recording and self.paused):
+            return
+        if self._player.playing:
+            self._put_take_away()
+            return
+        try:  # read afresh each time: a finished preview starts over
+            signal = self._recorder.so_far()
+        except RuntimeError as error:
+            self._drawer.say(str(error), ok=False)
+            return
+        self._player.load_signal(signal, self._recorder.sample_rate)
+        self._player.play()
+        self._play_timer.start()
+        self._drawer.set_previewing(True)
 
     def stop_recording(self) -> Path | None:
         """Alt+S, or the drawer's stop. Ends the take and asks what to call it."""
         if not self.recording:
             return None
+        self._put_take_away()  # a take being heard back ends with the take
         self._recorder_timer.stop()
         self._drawer.show_list()
         try:
@@ -652,6 +676,7 @@ class MainWindow(QMainWindow):
         """
         self._play_timer.stop()
         self._player.stop()
+        self._drawer.set_previewing(False)
 
     def toggle_playback(self) -> None:
         if not self._player.loaded:
@@ -674,6 +699,7 @@ class MainWindow(QMainWindow):
             self._player.position_seconds, self._player.duration_seconds
         )
         self._drawer.set_playing(self._player.playing)
+        self._drawer.set_previewing(self._player.playing)
 
     def rename_selected(self) -> None:
         index, take = self._selected_take()

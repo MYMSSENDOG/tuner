@@ -418,3 +418,43 @@ def test_deleting_from_the_menu_removes_the_take_that_was_right_clicked(
     menu_action(window, 0, "삭제").trigger()
     qapp.processEvents()
     assert [t.title for t in window._takes] == ["남길 것"]
+
+
+# --- hearing a paused take back -------------------------------------------------
+
+
+def test_a_paused_take_can_be_heard_back(make_window, qapp):
+    window, fake = make_window()
+    window.toggle_recording()
+    fake.pump()
+    window.toggle_pause()
+    qapp.processEvents()
+    assert window._drawer.preview_text == "▶ 지금까지 듣기"
+
+    window.toggle_preview()
+    assert window._player.playing
+    assert window._player.duration_seconds == pytest.approx(window._recorder.seconds, abs=0.01)
+    assert window._drawer.preview_text == "■ 그만 듣기"
+
+
+def test_resuming_stops_the_playback_before_recording_again(make_window, qapp):
+    """Otherwise the speakers play the take into the microphone recording it."""
+    window, fake = make_window()
+    window.toggle_recording()
+    fake.pump()
+    window.toggle_pause()
+    window.toggle_preview()
+    assert window._player.playing
+
+    window.toggle_pause()  # resume
+    assert not window._player.loaded
+    assert not window.paused
+    assert window._drawer.preview_text == "", "the control is hidden while recording"
+
+
+def test_hearing_back_is_offered_only_while_paused(make_window, qapp):
+    window, fake = make_window()
+    window.toggle_recording()
+    fake.pump()
+    window.toggle_preview()  # recording, not paused
+    assert not window._player.loaded

@@ -183,6 +183,7 @@ class RecordingsDrawer(QWidget):
     record_pressed = Signal()
     open_pressed = Signal(int)
     pause_pressed = Signal()
+    preview_pressed = Signal()  # hear the paused take so far
     stop_pressed = Signal()
     back_pressed = Signal()
     play_pressed = Signal()
@@ -290,8 +291,13 @@ class RecordingsDrawer(QWidget):
 
         under = QHBoxLayout()
         self._pause = self._flat("❚❚", "일시정지 (Alt+P)", self.pause_pressed)
+        # Only while paused: hearing the take back while it is still being
+        # recorded would put the playback into the take.
+        self._preview = self._flat("▶ 지금까지 듣기", "일시정지한 곳까지 들어보기", self.preview_pressed)
+        self._preview.hide()
         under.addStretch(1)
         under.addWidget(self._pause)
+        under.addWidget(self._preview)
         under.addStretch(1)
         layout.addLayout(under)
         layout.addStretch(1)
@@ -441,6 +447,16 @@ class RecordingsDrawer(QWidget):
         self._pause.setText("▶" if paused else "❚❚")
         self._pause.setToolTip("재개 (Alt+P)" if paused else "일시정지 (Alt+P)")
         self._stop.set_ringed(not paused)
+        self._preview.setVisible(paused)
+        if not paused:
+            self.set_previewing(False)
+
+    def set_previewing(self, previewing: bool) -> None:
+        self._preview.setText("■ 그만 듣기" if previewing else "▶ 지금까지 듣기")
+
+    @property
+    def preview_text(self) -> str:
+        return self._preview.text() if self._preview.isVisibleTo(self) else ""
 
     def set_elapsed(self, seconds: float) -> None:
         self._clock.setText(clock_text(seconds))

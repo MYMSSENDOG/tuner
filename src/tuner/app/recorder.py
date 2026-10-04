@@ -28,11 +28,13 @@ have moved it — see `recordings_dir`.
 
 from __future__ import annotations
 
+import collections
 import json
 import os
 import queue
 import re
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -44,6 +46,13 @@ import soundfile as sf
 SUFFIX = ".ogg"
 # A take being written. Not `.ogg`, so a half-written file is never listed.
 PART_SUFFIX = ".part"
+# How much of the most recent audio the writer keeps as-is, to cover what the
+# Vorbis encoder is still holding back when a paused take is listened to.
+# Measured: 3s written, 2.80s decodable from the still-open file - the
+# encoder's look-ahead is a fraction of a second. Five seconds is the margin.
+TAIL_SECONDS = 5.0
+# How long a preview waits for the writer to catch up with the last blocks.
+CATCH_UP_SECONDS = 2.0
 FORMAT = "OGG"
 SUBTYPE = "VORBIS"
 
@@ -212,6 +221,9 @@ class Recorder:
         self._error: BaseException | None = None
         self._pushed = 0  # frames handed over, for the live clock
         self._written = 0  # frames the writer actually wrote
+        # the newest frames the writer wrote, kept raw (see `so_far`)
+        self._tail: collections.deque[np.ndarray] = collections.deque()
+        self._tail_frames = 0
         self._sr = 0
         self._running = False
         self._paused = False
@@ -253,6 +265,8 @@ class Recorder:
         self._error = None
         self._pushed = 0
         self._written = 0
+        self._tail = collections.deque()
+        self._tail_frames = 0
         self._sr = 0
         self._paused = False
         # A queue per take: a block the audio thread hands over in the instant
@@ -288,6 +302,60 @@ class Recorder:
             self._sr = sr
         self._pushed += len(block)
         target.put((np.array(block, dtype=np.float32), self._sr))
+
+    def so_far(self) -> np.ndarray:
+        """Everything recorded until now, for listening back while paused.
+
+        The take is streaming into a file that is still open, and that file
+        can be read — but not all of it: the Vorbis encoder holds the last
+        fraction of a second back until the stream ends, and no flush releases
+        it (measured: 3.00s written, 2.80s readable). Played from the file
+        alone, the last note would be cut off.
+
+        So the file supplies what it can, and the writer's raw tail supplies
+        exactly the frames the encoder is still holding: the writer knows how
+        many it wrote, the file says how many it can give, and the difference
+        comes from the tail. Nothing is re-encoded and nothing is held beyond a
+        few seconds, however long the take.
+
+        Only while paused: during recording the answer would be stale before it
+        was returned. Raises RuntimeError when there is nothing to give.
+        """
+        if not (self._running and self._paused):
+            raise RuntimeError("일시정지 중에만 들을 수 있습니다")
+        if not self._catch_up():
+            raise RuntimeError("아직 쓰는 중입니다 — 잠시 뒤에 다시")
+        if self._written == 0 or self._part is None:
+            raise RuntimeError("아직 녹음된 소리가 없습니다")
+        try:
+            decoded, _ = sf.read(str(self._part), dtype="float32")
+        except Exception:  # noqa: BLE001 — no complete page yet: the tail has it all
+            decoded = np.zeros(0, dtype=np.float32)
+        decoded = decoded[: self._written]
+        missing = self._written - len(decoded)
+        if missing > self._tail_frames:
+            raise RuntimeError("아직 들을 수 없습니다 — 잠시 뒤에 다시")
+        if missing == 0:
+            return decoded
+        tail = np.concatenate(list(self._tail))
+        return np.concatenate([decoded, tail[len(tail) - missing :]])
+
+    def _catch_up(self) -> bool:
+        """Wait until the writer has written every block handed over."""
+        deadline = time.monotonic() + CATCH_UP_SECONDS
+        while self._written < self._pushed:
+            if self._error is not None or time.monotonic() > deadline:
+                return False
+            time.sleep(0.005)
+        return True
+
+    def _keep_tail(self, block: np.ndarray, sr: int) -> None:
+        """Writer thread only. Keeps the newest TAIL_SECONDS of what it wrote."""
+        self._tail.append(block)
+        self._tail_frames += len(block)
+        limit = int(TAIL_SECONDS * sr)
+        while self._tail and self._tail_frames - len(self._tail[0]) >= limit:
+            self._tail_frames -= len(self._tail.popleft())
 
     def stop(self) -> float:
         """Stop collecting, write out what is queued, close the file.
@@ -357,6 +425,7 @@ class Recorder:
                 if handle is None:
                     handle = open_signed(path, sr, a4_hz, at)
                 handle.write(block)
+                self._keep_tail(block, sr)
                 self._written += len(block)
         except BaseException as error:  # noqa: BLE001 — reported by stop()
             self._error = error

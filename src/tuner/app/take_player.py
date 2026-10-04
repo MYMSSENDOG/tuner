@@ -101,10 +101,15 @@ class TakePlayer:
     def load_file(self, path) -> float:
         """Read a take and hold it at position zero, without starting it."""
         signal, sr = sf.read(str(path), always_2d=True)
-        mono = signal.mean(axis=1)
-        self._signal = resampled(mono, int(sr), self._output.sample_rate)
-        self._position = 0
+        seconds = self.load_signal(signal.mean(axis=1), int(sr))
         self._path = path
+        return seconds
+
+    def load_signal(self, signal: np.ndarray, sr: int) -> float:
+        """Hold audio that is not (yet) a file — a paused take, heard back."""
+        self._signal = resampled(signal, int(sr), self._output.sample_rate)
+        self._position = 0
+        self._path = None
         self._loaded = True
         self._playing = False
         return self.duration_seconds

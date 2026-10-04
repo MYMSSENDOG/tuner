@@ -143,3 +143,53 @@ def test_finishing_an_empty_take_is_refused(tmp_path):
     with pytest.raises(RuntimeError):
         rec.finish("빈 것")
     assert list(tmp_path.iterdir()) == []
+
+
+# --- listening back while paused ---------------------------------------------
+
+
+def tone_blocks(rec, seconds: float, freq: float = 440.0):
+    t = np.arange(int(seconds * SR)) / SR
+    signal = (0.3 * np.sin(2 * np.pi * freq * t)).astype(np.float32)
+    usable = len(signal) // BLOCK * BLOCK
+    for start in range(0, usable, BLOCK):
+        rec.push_block(signal[start : start + BLOCK], SR)
+    return signal[:usable]
+
+
+def test_a_paused_take_can_be_heard_to_its_last_sample(tmp_path):
+    """The still-open file is missing the encoder's look-ahead (~0.2s); the
+    raw tail must fill exactly that, so the last note is not cut off."""
+    rec = recorder.Recorder(directory=tmp_path)
+    rec.start()
+    played = tone_blocks(rec, 3.0)
+    rec.pause()
+    heard = rec.so_far()
+    assert len(heard) == len(played)
+    # the end is the raw audio, sample for sample
+    assert np.allclose(heard[-SR // 10 :], played[-SR // 10 :])
+    rec.discard()
+
+
+def test_listening_back_does_not_disturb_the_take(tmp_path):
+    rec = recorder.Recorder(directory=tmp_path)
+    rec.start()
+    first = tone_blocks(rec, 1.0)
+    rec.pause()
+    rec.so_far()
+    rec.resume()
+    second = tone_blocks(rec, 1.0, freq=660.0)
+    rec.stop()
+    path = rec.finish("이어서")
+    assert sf.info(str(path)).frames == len(first) + len(second)
+
+
+def test_listening_back_is_only_for_a_paused_take(tmp_path):
+    rec = recorder.Recorder(directory=tmp_path)
+    with pytest.raises(RuntimeError):
+        rec.so_far()  # nothing running
+    rec.start()
+    tone_blocks(rec, 0.5)
+    with pytest.raises(RuntimeError):
+        rec.so_far()  # running, not paused: stale before it returned
+    rec.discard()
