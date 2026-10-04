@@ -22,6 +22,7 @@ from PySide6.QtGui import QColor, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -31,6 +32,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tuner.app.context_menu import modern_menu
 from tuner.app.round_button import MIC, PAUSE, PLAY, RING_SPAN, STOP, RoundButton
 
 WIDTH = 280  # a title, a date and a duration on one line, with room to read
@@ -419,6 +421,10 @@ class RecordingsDrawer(QWidget):
                 self._list_layout.insertWidget(self._list_layout.count() - 1, label)
             row = _TakeRow(title, when, duration)
             row.clicked.connect(lambda _=False, i=index: self._on_row(i))
+            row.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            row.customContextMenuRequested.connect(
+                lambda pos, i=index, r=row: self._show_row_menu(i, r.mapToGlobal(pos))
+            )
             self._list_layout.insertWidget(self._list_layout.count() - 1, row)
             self._rows.append(row)
 
@@ -462,6 +468,26 @@ class RecordingsDrawer(QWidget):
     def _on_row(self, index: int) -> None:
         self.select(index)
         self.open_pressed.emit(index)
+
+    def row_menu(self, index: int) -> QMenu:
+        """The right-click menu for one take.
+
+        Built separately from showing it so that what it offers can be checked
+        without opening a popup. The row is selected first: every action here
+        acts on the selected take, exactly as the playback page's buttons do,
+        so the menu and the page cannot disagree about which take they mean.
+        """
+        self.select(index)
+        menu = modern_menu(self)
+        menu.addAction("재생", lambda: self.open_pressed.emit(index))
+        menu.addAction("이름 바꾸기", self.rename_pressed.emit)
+        menu.addAction("폴더 열기", self.folder_pressed.emit)
+        menu.addSeparator()  # the one action that cannot be undone stands apart
+        menu.addAction("삭제", self.delete_pressed.emit)
+        return menu
+
+    def _show_row_menu(self, index: int, at) -> None:
+        self.row_menu(index).exec(at)
 
     def _on_seek(self, value: int) -> None:
         self.seeked.emit(value / 1000.0)

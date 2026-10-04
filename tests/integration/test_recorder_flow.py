@@ -387,3 +387,34 @@ def test_takes_are_found_again_on_the_next_run(make_window, qapp, monkeypatch):
     reopened, _ = make_window()
     assert [t.title for t in reopened._takes] == ["지난번 녹음"]
     assert reopened._drawer.take_count == 1
+
+
+# --- the right-click menu ------------------------------------------------------
+
+
+def menu_action(window, index, text):
+    menu = window._drawer.row_menu(index)
+    return next(a for a in menu.actions() if a.text() == text)
+
+
+def test_the_row_menu_offers_play_rename_folder_and_delete(make_window, qapp, monkeypatch):
+    window, fake = make_window()
+    saved(window, fake, qapp, monkeypatch, "메뉴")
+    texts = [a.text() for a in window._drawer.row_menu(0).actions() if not a.isSeparator()]
+    assert texts == ["재생", "이름 바꾸기", "폴더 열기", "삭제"]
+
+
+def test_deleting_from_the_menu_removes_the_take_that_was_right_clicked(
+    make_window, qapp, monkeypatch
+):
+    """Not whichever row happened to be selected before the right-click."""
+    window, fake = make_window()
+    saved(window, fake, qapp, monkeypatch, "남길 것")
+    saved(window, fake, qapp, monkeypatch, "지울 것")  # newest, so row 0
+    window._drawer.select(1)  # the other one is selected
+    monkeypatch.setattr(
+        QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Discard)
+    )
+    menu_action(window, 0, "삭제").trigger()
+    qapp.processEvents()
+    assert [t.title for t in window._takes] == ["남길 것"]
