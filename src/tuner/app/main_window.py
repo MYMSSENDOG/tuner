@@ -327,6 +327,7 @@ class MainWindow(QMainWindow):
         self._drawer.record_pressed.connect(self.toggle_recording)
         self._drawer.pause_pressed.connect(self.toggle_pause)
         self._drawer.preview_pressed.connect(self.toggle_preview)
+        self._drawer.preview_seeked.connect(self._seek_fraction)
         self._drawer.stop_pressed.connect(self.stop_recording)
         self._drawer.open_pressed.connect(self.open_take)
         self._drawer.back_pressed.connect(self.close_take)
@@ -444,12 +445,12 @@ class MainWindow(QMainWindow):
         self._meter.set_reading(reading)
         self._trace.add_reading(reading)
         self._level_bar.set_level(reading.level_dbfs)
-        if self.recording:
+        if self.recording and not self.paused:
             # The same level the bar shows, kept as a short trail: proof that
-            # the microphone is still live without drawing the file's waveform.
-            self._drawer.push_level(
-                level_fraction(reading.level_dbfs), live=not self._recorder.paused
-            )
+            # the take is still being recorded. Paused, nothing is being
+            # recorded, so the trail stands still where it stopped - it used to
+            # keep scrolling in a dimmer colour, which read as still recording.
+            self._drawer.push_level(level_fraction(reading.level_dbfs))
 
         if reading.level_dbfs <= DIGITAL_SILENCE_DBFS:
             self._silent_readings += 1
@@ -561,7 +562,10 @@ class MainWindow(QMainWindow):
             # the speakers would play the take into the microphone that is
             # recording it.
             self._put_take_away()
-        self._drawer.set_paused(self._recorder.toggle_pause())
+        paused = self._recorder.toggle_pause()
+        self._drawer.set_paused(paused)
+        if paused:  # the player row opens showing how much there is to hear
+            self._drawer.set_preview_position(0.0, self._recorder.seconds)
 
     def toggle_preview(self) -> None:
         """Hear the paused take up to where it was paused, or stop hearing it."""
@@ -579,6 +583,7 @@ class MainWindow(QMainWindow):
         self._player.play()
         self._play_timer.start()
         self._drawer.set_previewing(True)
+        self._drawer.set_preview_position(0.0, self._player.duration_seconds)
 
     def stop_recording(self) -> Path | None:
         """Alt+S, or the drawer's stop. Ends the take and asks what to call it."""
@@ -700,6 +705,10 @@ class MainWindow(QMainWindow):
         )
         self._drawer.set_playing(self._player.playing)
         self._drawer.set_previewing(self._player.playing)
+        if self.recording:
+            self._drawer.set_preview_position(
+                self._player.position_seconds, self._player.duration_seconds
+            )
 
     def rename_selected(self) -> None:
         index, take = self._selected_take()

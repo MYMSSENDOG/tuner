@@ -429,12 +429,17 @@ def test_a_paused_take_can_be_heard_back(make_window, qapp):
     fake.pump()
     window.toggle_pause()
     qapp.processEvents()
-    assert window._drawer.preview_text == "▶ 지금까지 듣기"
+    assert window._drawer.listen_visible
+    assert not window._drawer.listening
+    seconds = window._recorder.seconds
+    from tuner.app.recordings_drawer import short_clock
+
+    assert window._drawer.listen_time_text == f"0:00 / {short_clock(seconds)}"
 
     window.toggle_preview()
     assert window._player.playing
-    assert window._player.duration_seconds == pytest.approx(window._recorder.seconds, abs=0.01)
-    assert window._drawer.preview_text == "■ 그만 듣기"
+    assert window._player.duration_seconds == pytest.approx(seconds, abs=0.01)
+    assert window._drawer.listening
 
 
 def test_resuming_stops_the_playback_before_recording_again(make_window, qapp):
@@ -449,7 +454,7 @@ def test_resuming_stops_the_playback_before_recording_again(make_window, qapp):
     window.toggle_pause()  # resume
     assert not window._player.loaded
     assert not window.paused
-    assert window._drawer.preview_text == "", "the control is hidden while recording"
+    assert not window._drawer.listen_visible, "the player is hidden while recording"
 
 
 def test_hearing_back_is_offered_only_while_paused(make_window, qapp):

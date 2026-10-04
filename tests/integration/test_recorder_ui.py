@@ -199,15 +199,21 @@ def test_stopping_goes_back_to_the_list(window, qapp, monkeypatch):
     assert window._drawer.page == RecordingsDrawer.LIST
 
 
-def test_pause_toggles_the_button_and_the_rings(window, qapp):
+def test_pausing_turns_the_page_into_a_place_to_listen(window, qapp):
+    """Paused: the button under the circle offers to carry on *recording*
+    (it used to be a play triangle - the same mark as "listen", for the
+    opposite action), the rings come off, and the small player appears."""
     window.toggle_recording()
     window.toggle_pause()
     qapp.processEvents()
     assert window.paused
-    assert window._drawer.pause_text == "▶"
+    assert "이어서 녹음" in window._drawer.pause_text
+    assert "▶" not in window._drawer.pause_text
+    assert window._drawer.listen_visible
     window.toggle_pause()
     assert not window.paused
-    assert window._drawer.pause_text == "❚❚"
+    assert "일시정지" in window._drawer.pause_text
+    assert not window._drawer.listen_visible
 
 
 def test_pause_and_stop_do_nothing_when_nothing_is_recording(window):
@@ -237,13 +243,19 @@ def test_the_trail_fills_only_while_recording(window, qapp):
     assert all(live for _, live in window._drawer._trail.bars)
 
 
-def test_a_paused_trail_is_marked_as_paused(window, qapp):
+def test_the_trail_stands_still_while_paused(window, qapp):
+    """Nothing is being recorded, so nothing scrolls. It used to keep moving
+    in a dimmer colour, which read as still recording."""
     window.toggle_recording()
+    window._engine._audio.pump()
+    qapp.processEvents()
+    before = window._drawer._trail.bars
+    assert before
+
     window.toggle_pause()
     window._engine._audio.pump()
     qapp.processEvents()
-    bars = window._drawer._trail.bars
-    assert bars and not any(live for _, live in bars)
+    assert window._drawer._trail.bars == before
 
 
 # --- clocks ----------------------------------------------------------------------

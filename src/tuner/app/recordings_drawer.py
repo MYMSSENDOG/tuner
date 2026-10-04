@@ -54,6 +54,7 @@ PLAY_GLYPH = "#dce6f5"
 # the three: big enough to aim at without looking, no bigger. Stop and play own
 # their pages, and the stop button also wears rings while a take is live.
 MIC_DIAMETER = 34
+LISTEN_DIAMETER = 26  # a small player tucked under the trail, not a second hero
 STOP_DIAMETER = 56
 PLAY_DIAMETER = 56
 
@@ -65,6 +66,10 @@ WAVE_HEIGHT = 26
 WAVE_BAR = QColor("#b4625d")
 WAVE_FLOOR = QColor("#6d4f4d")  # bars from while it was paused
 WAVE_BG = QColor("#2f3542")
+
+PAUSE_TEXT = "❚❚  일시정지"
+RESUME_TEXT = "●  이어서 녹음"
+RESUME_INK = "#ff8f8a"  # it records, so it is the record red
 
 STATUS_OK = "#9fc45a"
 STATUS_BAD = "#e08a8a"
@@ -184,6 +189,7 @@ class RecordingsDrawer(QWidget):
     open_pressed = Signal(int)
     pause_pressed = Signal()
     preview_pressed = Signal()  # hear the paused take so far
+    preview_seeked = Signal(float)
     stop_pressed = Signal()
     back_pressed = Signal()
     play_pressed = Signal()
@@ -263,9 +269,18 @@ class RecordingsDrawer(QWidget):
         return page
 
     def _build_recording_page(self) -> QWidget:
+        """Clock, level trail, the big stop, and pause/resume under it.
+
+        Paused, the page turns into a place to hear the take back: the clock
+        and the trail stand still where they stopped, a small player appears
+        directly under the trail (the strip that was drawing the sound is
+        where you find the sound), and the button under the circle offers to
+        carry on recording - in red, because it records. It used to be a play
+        triangle, the same mark as "listen", for the opposite action.
+        """
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(12, 8, 12, 0)
+        layout.setContentsMargins(14, 8, 14, 0)
         layout.setSpacing(6)
         layout.addStretch(1)
 
@@ -273,9 +288,32 @@ class RecordingsDrawer(QWidget):
         self._clock.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._clock.setStyleSheet(f"color: {INK}; border: 0; font-size: 24px; font-weight: 300;")
         layout.addWidget(self._clock)
+        self._paused_caption = QLabel("일시정지됨")
+        self._paused_caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._paused_caption.setStyleSheet(f"color: {DIM}; border: 0;")
+        self._paused_caption.hide()
+        layout.addWidget(self._paused_caption)
 
         self._trail = _LevelTrail()
         layout.addWidget(self._trail)
+
+        # the listen-back player: only while paused (hearing the take while it
+        # is still being recorded would put the playback into the take)
+        self._listen_row = QWidget()
+        listen = QHBoxLayout(self._listen_row)
+        listen.setContentsMargins(0, 2, 0, 2)
+        listen.setSpacing(8)
+        self._listen = RoundButton(PLAY, LISTEN_DIAMETER, PLAY_FILL, PLAY_GLYPH)
+        self._listen.setToolTip("일시정지한 곳까지 들어보기")
+        self._listen.clicked.connect(self.preview_pressed.emit)
+        self._listen_seek = self._seek_bar(self.preview_seeked)
+        self._listen_time = QLabel("0:00 / 0:00")
+        self._listen_time.setStyleSheet(f"color: {DIM}; border: 0;")
+        listen.addWidget(self._listen)
+        listen.addWidget(self._listen_seek, 1)
+        listen.addWidget(self._listen_time)
+        self._listen_row.hide()
+        layout.addWidget(self._listen_row)
 
         tray = QHBoxLayout()
         self._stop = RoundButton(
@@ -290,18 +328,28 @@ class RecordingsDrawer(QWidget):
         layout.addLayout(tray)
 
         under = QHBoxLayout()
-        self._pause = self._flat("❚❚", "일시정지 (Alt+P)", self.pause_pressed)
-        # Only while paused: hearing the take back while it is still being
-        # recorded would put the playback into the take.
-        self._preview = self._flat("▶ 지금까지 듣기", "일시정지한 곳까지 들어보기", self.preview_pressed)
-        self._preview.hide()
+        self._pause = self._flat(PAUSE_TEXT, "일시정지 (Alt+P)", self.pause_pressed)
         under.addStretch(1)
         under.addWidget(self._pause)
-        under.addWidget(self._preview)
         under.addStretch(1)
         layout.addLayout(under)
         layout.addStretch(1)
         return page
+
+    def _seek_bar(self, signal) -> QSlider:
+        bar = QSlider(Qt.Orientation.Horizontal)
+        bar.setRange(0, 1000)
+        bar.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        bar.setStyleSheet(
+            "QSlider { border: 0; }"
+            f" QSlider::groove:horizontal {{ height: 3px; background: {FAINT};"
+            " border: 0; border-radius: 1px; }"
+            f" QSlider::sub-page:horizontal {{ background: {PLAY_GLYPH}; border-radius: 1px; }}"
+            f" QSlider::handle:horizontal {{ background: {PLAY_GLYPH}; width: 11px;"
+            " height: 11px; margin: -4px 0; border-radius: 5px; }"
+        )
+        bar.sliderMoved.connect(lambda value: signal.emit(value / 1000.0))
+        return bar
 
     def _build_playback_page(self) -> QWidget:
         page = QWidget()
@@ -341,18 +389,7 @@ class RecordingsDrawer(QWidget):
         seek_row.setSpacing(6)
         self._at = QLabel("0:00")
         self._at.setStyleSheet(f"color: {DIM}; border: 0;")
-        self._seek = QSlider(Qt.Orientation.Horizontal)
-        self._seek.setRange(0, 1000)
-        self._seek.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._seek.setStyleSheet(
-            "QSlider { border: 0; }"
-            f" QSlider::groove:horizontal {{ height: 3px; background: {FAINT};"
-            " border: 0; border-radius: 1px; }"
-            f" QSlider::sub-page:horizontal {{ background: {PLAY_GLYPH}; border-radius: 1px; }}"
-            f" QSlider::handle:horizontal {{ background: {PLAY_GLYPH}; width: 11px;"
-            " height: 11px; margin: -4px 0; border-radius: 5px; }"
-        )
-        self._seek.sliderMoved.connect(self._on_seek)
+        self._seek = self._seek_bar(self.seeked)
         self._total = QLabel("0:00")
         self._total.setStyleSheet(f"color: {DIM}; border: 0;")
         seek_row.addWidget(self._at)
@@ -379,13 +416,17 @@ class RecordingsDrawer(QWidget):
         button.setFlat(True)
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: 0; color: {DIM};"
+        button.setStyleSheet(self._flat_style(DIM))
+        button.clicked.connect(signal.emit)
+        return button
+
+    @staticmethod
+    def _flat_style(colour: str) -> str:
+        return (
+            f"QPushButton {{ background: transparent; border: 0; color: {colour};"
             " padding: 3px 8px; }"
             f" QPushButton:hover {{ color: {INK}; }}"
         )
-        button.clicked.connect(signal.emit)
-        return button
 
     # --- what the window tells it -----------------------------------------
 
@@ -444,19 +485,35 @@ class RecordingsDrawer(QWidget):
             row.setChecked(i == index)
 
     def set_paused(self, paused: bool) -> None:
-        self._pause.setText("▶" if paused else "❚❚")
-        self._pause.setToolTip("재개 (Alt+P)" if paused else "일시정지 (Alt+P)")
+        self._pause.setText(RESUME_TEXT if paused else PAUSE_TEXT)
+        self._pause.setToolTip("이어서 녹음 (Alt+P)" if paused else "일시정지 (Alt+P)")
+        self._pause.setStyleSheet(self._flat_style(RESUME_INK if paused else DIM))
         self._stop.set_ringed(not paused)
-        self._preview.setVisible(paused)
+        self._paused_caption.setVisible(paused)
+        self._listen_row.setVisible(paused)
         if not paused:
             self.set_previewing(False)
+            self.set_preview_position(0.0, 0.0)
 
     def set_previewing(self, previewing: bool) -> None:
-        self._preview.setText("■ 그만 듣기" if previewing else "▶ 지금까지 듣기")
+        self._listen.set_glyph(PAUSE if previewing else PLAY)
+
+    def set_preview_position(self, seconds: float, total: float) -> None:
+        self._listen_time.setText(f"{short_clock(seconds)} / {short_clock(total)}")
+        if not self._listen_seek.isSliderDown():
+            self._listen_seek.setValue(int(1000 * seconds / total) if total > 0 else 0)
 
     @property
-    def preview_text(self) -> str:
-        return self._preview.text() if self._preview.isVisibleTo(self) else ""
+    def listen_visible(self) -> bool:
+        return self._listen_row.isVisibleTo(self)
+
+    @property
+    def listening(self) -> bool:
+        return self._listen.glyph == PAUSE
+
+    @property
+    def listen_time_text(self) -> str:
+        return self._listen_time.text()
 
     def set_elapsed(self, seconds: float) -> None:
         self._clock.setText(clock_text(seconds))
@@ -504,9 +561,6 @@ class RecordingsDrawer(QWidget):
 
     def _show_row_menu(self, index: int, at) -> None:
         self.row_menu(index).exec(at)
-
-    def _on_seek(self, value: int) -> None:
-        self.seeked.emit(value / 1000.0)
 
     # --- for the window and the tests ---------------------------------------
 
