@@ -147,3 +147,68 @@ def test_no_output_device_is_reported_not_raised(make_window):
     assert window._metronome_bar._play.text() == "▶"
     assert not window._note.isHidden()  # the user was told
     window.close()
+
+
+# --- the visual metronome -------------------------------------------------------
+
+
+def test_the_beat_lane_shows_only_while_playing(make_window):
+    window = make_window()
+    window.show()
+    lane = window._beat_lane
+    assert not lane.isVisible()
+    window._metronome_bar._play.click()
+    assert lane.isVisible() and lane.running
+    window._metronome_bar._play.click()
+    assert not lane.isVisible() and not lane.running
+    window.close()
+
+
+def test_the_beat_lane_lets_clicks_through(make_window):
+    """Drawn over the meter; must never eat a click meant for what is under it."""
+    from PySide6.QtCore import Qt
+
+    window = make_window()
+    assert window._beat_lane.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    window.close()
+
+
+def test_the_beat_lane_sits_inside_the_meter(make_window):
+    window = make_window()
+    window.show()
+    window._metronome_bar._play.click()
+    assert window._meter.geometry().contains(window._beat_lane.geometry())
+    window.close()
+
+
+def test_beats_per_bar_is_applied_on_ok_and_survives_a_restart(make_window, monkeypatch):
+    from PySide6.QtWidgets import QDialog
+
+    from tuner.app import metronome_widget
+
+    def accept_with_three(self):
+        self._bar_buttons[3].click()
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(metronome_widget.SoundDialog, "exec", accept_with_three)
+    window = make_window()
+    window._metronome_bar._ask_sound()
+    assert window._metronome.beats_per_bar == 3
+    window.close()
+    assert make_window()._metronome.beats_per_bar == 3
+
+
+def test_beats_per_bar_is_left_alone_on_cancel(make_window, monkeypatch):
+    from PySide6.QtWidgets import QDialog
+
+    from tuner.app import metronome_widget
+
+    def cancel_after_three(self):
+        self._bar_buttons[3].click()
+        return QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(metronome_widget.SoundDialog, "exec", cancel_after_three)
+    window = make_window()
+    window._metronome_bar._ask_sound()
+    assert window._metronome.beats_per_bar == 4
+    window.close()

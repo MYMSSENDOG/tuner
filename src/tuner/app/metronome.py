@@ -20,10 +20,13 @@ import numpy as np
 from tuner.audio.output import AudioOutput
 from tuner.core.interference import HeardClicks
 from tuner.core.metronome import (
+    BEATS_PER_BAR_CHOICES,
     CLICK_AMPLITUDE,
     CLICK_SOUNDS,
+    DEFAULT_BEATS_PER_BAR,
     DEFAULT_BPM,
     DEFAULT_SOUND,
+    BeatView,
     Metronome,
     clamp_bpm,
     clamp_volume,
@@ -58,6 +61,11 @@ class MetronomeService:
         # something with the beat stopped
         self._preview: np.ndarray | None = None
         self._preview_at = 0
+        # For the visual metronome: which sample is coming out of the speaker
+        # when. Written by the audio thread at each pull as one tuple, read by
+        # the GUI - see `beat_view`.
+        self._anchor: tuple[int, float] | None = None
+        self._beats_per_bar = DEFAULT_BEATS_PER_BAR
 
     @property
     def bpm(self) -> float:
@@ -166,18 +174,54 @@ class MetronomeService:
         self._running = False
         self._output.stop()
         self._metronome = None
+        self._anchor = None
         self.clicks.idle()  # nothing to look for; suppress nothing
+
+    @property
+    def beats_per_bar(self) -> int:
+        """How the beats are counted on screen (1-2-3-4...). Display only -
+        every click sounds the same."""
+        return self._beats_per_bar
+
+    def set_beats_per_bar(self, beats: int) -> int:
+        self._beats_per_bar = beats if beats in BEATS_PER_BAR_CHOICES else DEFAULT_BEATS_PER_BAR
+        return self._beats_per_bar
+
+    def beat_view(self, ahead: int = 3, now: float | None = None) -> BeatView | None:
+        """The beats around the moment being *heard*, or None when stopped.
+
+        The audio thread leaves an anchor at every pull: the sample it is about
+        to render, and when that sample will leave the speaker (now plus the
+        device's output latency). From it the GUI works out which sample is
+        sounding at any instant, and the schedule says where that falls among
+        the beats. So a beat drawn here lands on the click that was rendered,
+        however unevenly the GUI repaints - the display reads the audio clock;
+        its own timer only decides how often to look.
+
+        (The click suppressor deliberately does *not* use this: it finds the
+        beat in the microphone, because a wrong latency figure would aim it
+        wrongly. A display a few ms off is not a problem a player can see.)
+        """
+        metronome, anchor = self._metronome, self._anchor
+        if metronome is None or anchor is None:
+            return None
+        sample, heard_at = anchor
+        when = self._clock() if now is None else now
+        sounding = sample + round((when - heard_at) * metronome.sr)
+        return metronome.beats_around(sounding, ahead)
 
     def toggle(self) -> bool:
         self.stop() if self._running else self.start()
         return self._running
 
     def _render(self, frames: int) -> np.ndarray:
-        """Audio thread: the device's pull. Nothing is published from here —
-        when the beat is audible is the microphone's business, not ours."""
+        """Audio thread: the device's pull. Leaves one anchor for the display
+        (see `beat_view`); the click suppressor is told nothing from here -
+        when the beat is audible is the microphone's business."""
         metronome = self._metronome
         if metronome is None:
             return self._render_preview(frames)
+        self._anchor = (metronome.position, self._clock() + self._output.latency_s)
         return metronome.render(frames)
 
     def _render_preview(self, frames: int) -> np.ndarray:

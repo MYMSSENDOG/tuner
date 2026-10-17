@@ -218,3 +218,33 @@ def test_changing_sound_keeps_the_beat():
     assert metronome.sound == "틱"
     assert metronome.beat_samples_in(0, SR) == before
     assert onset_samples(metronome.render(SR))[0] <= 2
+
+
+# --- where a moment falls among the beats (for the visual metronome) ---------
+
+
+def test_beats_around_is_arithmetic_on_the_schedule():
+    m = Metronome(sr=SR, bpm=120)  # a beat every 22050 samples
+    view = m.beats_around(22050 + 100, ahead=3)
+    assert view.last == (1, 100)
+    assert view.upcoming == [(2, 22050 - 100), (3, 2 * 22050 - 100), (4, 3 * 22050 - 100)]
+
+
+def test_before_the_first_beat_there_is_no_last_beat():
+    m = Metronome(sr=SR, bpm=120)
+    view = m.beats_around(-500, ahead=2)
+    assert view.last is None
+    assert view.upcoming[0] == (0, 500)
+
+
+def test_beat_numbers_survive_a_tempo_change():
+    """Rebasing restarts the sample arithmetic at the current beat; the count
+    must not restart with it, or a 1-2-3-4 display jumps back to 1 the moment
+    the tempo dial is touched."""
+    m = Metronome(sr=SR, bpm=120)
+    m.render(22050 * 5 + 10)  # five beats have passed, the sixth is sounding
+    before = m.beats_around(m.position, ahead=1).last[0]
+    m.set_bpm(90)
+    after = m.beats_around(m.position, ahead=1)
+    assert after.last[0] == before
+    assert after.upcoming[0][0] == before + 1

@@ -167,3 +167,38 @@ def test_the_suppressor_is_told_how_long_the_sound_lasts():
     expected = len(sound_waveform("비프", SR)) / SR + ROOM_DECAY_S
     assert metronome.clicks._tail == pytest.approx(expected, abs=1e-6)
     metronome.stop()
+
+
+# --- the visual metronome's view of the beat -------------------------------------
+
+
+def test_the_display_sees_the_beat_when_it_is_heard_not_when_it_is_rendered():
+    """A click rendered now leaves the speaker one output latency later; the
+    lane must hit on the second moment, not the first."""
+    clock = [10.0]
+    output = FakeAudioOutput(latency_s=0.05)
+    service = MetronomeService(output, bpm=120, clock=lambda: clock[0])
+    service.start()
+    output.pull(256)  # renders from sample 0, heard at 10.05
+
+    early = service.beat_view(now=10.0)
+    assert early.last is None, "beat 0 has been rendered but not heard yet"
+    assert early.seconds_until()[0] == (0, pytest.approx(0.05, abs=1e-4))
+
+    on_beat_one = service.beat_view(now=10.05 + 0.5)
+    assert on_beat_one.last == (1, 0)
+
+
+def test_no_beat_view_while_stopped():
+    service = MetronomeService(FakeAudioOutput())
+    assert service.beat_view() is None
+    service.start()
+    service.stop()
+    assert service.beat_view() is None
+
+
+def test_beats_per_bar_takes_only_the_offered_choices():
+    service = MetronomeService(FakeAudioOutput())
+    assert service.beats_per_bar == 4
+    assert service.set_beats_per_bar(3) == 3
+    assert service.set_beats_per_bar(5) == 4  # not offered: the default

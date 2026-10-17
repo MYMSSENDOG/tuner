@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from tuner.app import recorder, take_analysis
+from tuner.app.beat_lane import BeatLane
 from tuner.app.capture import MAX_SESSION_SECONDS, RING_SECONDS, FieldCapture
 from tuner.app.drawer_handle import DrawerHandle
 from tuner.app.engine import DIGITAL_SILENCE_DBFS, TunerEngine, TunerReading
@@ -51,7 +52,12 @@ from tuner.app.trace_widget import PitchTraceWidget
 from tuner.audio.input import AudioInput
 from tuner.audio.output import AudioOutput
 from tuner.audio.sounddevice_output import SoundDeviceOutput
-from tuner.core.metronome import CLICK_AMPLITUDE, DEFAULT_BPM, DEFAULT_SOUND
+from tuner.core.metronome import (
+    CLICK_AMPLITUDE,
+    DEFAULT_BEATS_PER_BAR,
+    DEFAULT_BPM,
+    DEFAULT_SOUND,
+)
 
 # Bumped when the default window size changes: a stored geometry from the
 # tall layout would otherwise survive the update and re-stretch the window,
@@ -345,6 +351,12 @@ class MainWindow(QMainWindow):
         self._drawer_handle.toggled.connect(self.toggle_drawer)
         self._drawer_handle.raise_()
         central.installEventFilter(self)
+        # The visual metronome, drawn over the meter's empty left margin. It
+        # follows the meter (which moves when the no-signal banner appears)
+        # and lets every click through to what is underneath.
+        self._beat_lane = BeatLane(self._metronome, central)
+        self._meter.installEventFilter(self)
+        self._metronome_bar.running_changed.connect(self._beat_lane.set_running)
         self._drawer = RecordingsDrawer()
         self._drawer.record_pressed.connect(self.toggle_recording)
         self._drawer.pause_pressed.connect(self.toggle_pause)
@@ -373,7 +385,15 @@ class MainWindow(QMainWindow):
         """Keep the overlaid handle on the column's right edge as it resizes."""
         if event.type() == QEvent.Type.Resize and watched is self._tuner_column:
             self._place_handle()
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Move) and watched is self._meter:
+            self._place_beat_lane()
         return super().eventFilter(watched, event)
+
+    def _place_beat_lane(self) -> None:
+        meter = self._meter.geometry()
+        self._beat_lane.setGeometry(
+            meter.x() + 4, meter.y() + 2, self._beat_lane.width(), max(meter.height() - 4, 0)
+        )
 
     def _place_handle(self) -> None:
         """The tab sits on the column's right edge at its vertical centre.
@@ -430,6 +450,10 @@ class MainWindow(QMainWindow):
             stored_bpm if isinstance(stored_bpm, float) else DEFAULT_BPM
         )
         self._metronome_bar.set_sound(str(s.value("metronome_sound", DEFAULT_SOUND)))
+        stored_bar = s.value("metronome_beats_per_bar", DEFAULT_BEATS_PER_BAR, type=int)
+        self._metronome.set_beats_per_bar(
+            stored_bar if isinstance(stored_bar, int) else DEFAULT_BEATS_PER_BAR
+        )
         stored_volume = s.value("metronome_volume", CLICK_AMPLITUDE, type=float)
         self._metronome_bar.set_volume(
             stored_volume if isinstance(stored_volume, float) else CLICK_AMPLITUDE
@@ -453,6 +477,7 @@ class MainWindow(QMainWindow):
         s.setValue("bpm", self._metronome.bpm)
         s.setValue("metronome_volume", self._metronome.volume)
         s.setValue("metronome_sound", self._metronome.sound)
+        s.setValue("metronome_beats_per_bar", self._metronome.beats_per_bar)
         s.setValue("input_gate_dbfs", self._engine.input_gate_dbfs)
         s.setValue("always_on_top", self._pin_check.isChecked())
         s.setValue(DRAWER_OPEN_KEY, self.drawer_open)

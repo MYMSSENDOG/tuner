@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QHBoxLayout,
     QInputDialog,
+    QLabel,
     QListWidget,
     QPushButton,
     QVBoxLayout,
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from tuner.app.metronome import MetronomeService
 from tuner.core.metronome import (
+    BEATS_PER_BAR_CHOICES,
     CLICK_SOUNDS,
     MAX_BPM,
     MAX_VOLUME,
@@ -104,7 +106,7 @@ class MenuButton(QPushButton):
 
 
 class SoundDialog(QDialog):
-    """The four sounds, as a list you can hear.
+    """The four sounds, as a list you can hear - and the beats in a bar.
 
     A list and not a cycling button because the names are worth seeing at
     once; hearing is still what decides, so moving the selection plays the
@@ -114,9 +116,10 @@ class SoundDialog(QDialog):
 
     def __init__(self, service: MetronomeService, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("메트로놈 소리")
+        self.setWindowTitle("메트로놈")
         self._service = service
         self._original = service.sound
+        self._beats_per_bar = service.beats_per_bar
 
         self._list = QListWidget()
         self._list.addItems(list(CLICK_SOUNDS))
@@ -137,8 +140,25 @@ class SoundDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
+        # How the visual metronome counts (1-2-3-4). Here rather than on the
+        # metronome row, which has 12px left before it would widen the window.
+        # Applied on OK only, like the sound.
+        bar_row = QHBoxLayout()
+        bar_row.addWidget(QLabel("박자"))
+        self._bar_buttons: dict[int, QPushButton] = {}
+        for beats in BEATS_PER_BAR_CHOICES:
+            button = QPushButton(f"{beats}박")
+            button.setCheckable(True)
+            button.setChecked(beats == self._beats_per_bar)
+            button.setAutoExclusive(True)
+            button.clicked.connect(lambda _=False, b=beats: self._choose_bar(b))
+            self._bar_buttons[beats] = button
+            bar_row.addWidget(button)
+        bar_row.addStretch(1)
+
         layout = QVBoxLayout(self)
         layout.addWidget(self._list)
+        layout.addLayout(bar_row)
         layout.addWidget(buttons)
 
     def _audition(self, name: str) -> None:
@@ -158,6 +178,13 @@ class SoundDialog(QDialog):
     @property
     def chosen(self) -> str:
         return self._list.currentItem().text()
+
+    def _choose_bar(self, beats: int) -> None:
+        self._beats_per_bar = beats
+
+    @property
+    def chosen_beats_per_bar(self) -> int:
+        return self._beats_per_bar
 
 
 class VolumeBar(QWidget):
@@ -250,6 +277,7 @@ class MetronomeBar(QWidget):
 
     bpm_changed = Signal(float)
     failed = Signal(str)
+    running_changed = Signal(bool)  # the visual metronome follows this
 
     def __init__(self, service: MetronomeService, parent=None):
         super().__init__(parent)
@@ -305,6 +333,7 @@ class MetronomeBar(QWidget):
         self._bpm.setText(f"{self._service.bpm:g}")
         self._sound.setToolTip(f"메트로놈 소리: {self._service.sound}")
         self._play.setText(STOP_TEXT if self._service.running else PLAY_TEXT)
+        self.running_changed.emit(self._service.running)
 
     def _toggle(self) -> None:
         try:
@@ -335,6 +364,7 @@ class MetronomeBar(QWidget):
         dialog = SoundDialog(self._service, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._service.set_sound(dialog.chosen)
+            self._service.set_beats_per_bar(dialog.chosen_beats_per_bar)
         self._refresh()
 
     def set_sound(self, name: str) -> None:

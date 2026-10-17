@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -149,6 +150,11 @@ def sound_waveform(name: str, sr: int, amplitude: float = CLICK_AMPLITUDE) -> np
     return CLICK_SOUNDS.get(name, CLICK_SOUNDS[DEFAULT_SOUND])(sr, amplitude)
 
 
+# How the visual metronome counts the beats of a bar. Display only.
+BEATS_PER_BAR_CHOICES = (2, 3, 4, 6)
+DEFAULT_BEATS_PER_BAR = 4
+
+
 def clamp_bpm(bpm: float) -> float:
     return min(max(float(bpm), MIN_BPM), MAX_BPM)
 
@@ -167,6 +173,12 @@ class ClickSchedule:
         self._sr = sr
         self._origin = origin
         self._bpm = clamp_bpm(bpm)
+        # How many beats came before `origin`. Rebasing moves the origin onto
+        # the current beat, which would restart the count at zero - and a
+        # display counting 1-2-3-4 would jump back to "1" the moment the tempo
+        # dial was touched. Beat *numbers* are absolute; sample arithmetic is
+        # relative to the origin as before.
+        self._beats_before_origin = 0
 
     @property
     def bpm(self) -> float:
@@ -182,8 +194,15 @@ class ClickSchedule:
 
     def rebase(self, bpm: float, at_sample: int) -> None:
         """Change tempo without moving the beat currently in progress."""
-        self._origin = self.beat_sample(self.beat_before(at_sample))
+        current = self.beat_before(at_sample)
+        self._origin = self.beat_sample(current)
+        self._beats_before_origin += current
         self._bpm = clamp_bpm(bpm)
+
+    def number(self, k: int) -> int:
+        """The absolute count of beat k since the schedule began, unchanged by
+        tempo changes - what a bar position is computed from."""
+        return self._beats_before_origin + k
 
     def beat_before(self, sample: int) -> int:
         """Index of the last beat at or before `sample` (may be negative)."""
@@ -204,6 +223,27 @@ class ClickSchedule:
             for k in range(first, last + 1)
             if start - span < self.beat_sample(k) < start + count
         ]
+
+
+@dataclass(frozen=True)
+class BeatView:
+    """The beats around one moment, for drawing.
+
+    `last` is (beat number, samples since it), or None before the first beat;
+    `upcoming` is (beat number, samples until it) for the next few beats.
+    Numbers count from the first beat and survive tempo changes.
+    """
+
+    last: tuple[int, int] | None
+    upcoming: list[tuple[int, int]]
+    sr: int
+
+    @property
+    def seconds_since_last(self) -> float | None:
+        return None if self.last is None else self.last[1] / self.sr
+
+    def seconds_until(self) -> list[tuple[int, float]]:
+        return [(number, samples / self.sr) for number, samples in self.upcoming]
 
 
 class Metronome:
@@ -269,6 +309,25 @@ class Metronome:
         """Back to a beat at sample 0 — a fresh start, not a resume."""
         self._schedule = ClickSchedule(self._schedule.bpm, self._sr)
         self._position = 0
+
+    def beats_around(self, sample: int, ahead: int) -> BeatView:
+        """Where `sample` falls among the beats: the last beat at or before it
+        and the next `ahead` beats after it, all in samples relative to it.
+
+        Pure arithmetic on the schedule, so a display computed from it lands
+        on exactly the samples the clicks were rendered at. Beats before the
+        first one (a sample earlier than beat 0) report no last beat.
+        """
+        schedule = self._schedule
+        k = schedule.beat_before(sample)
+        last = None
+        if k >= 0:
+            last = (schedule.number(k), sample - schedule.beat_sample(k))
+        upcoming = [
+            (schedule.number(j), schedule.beat_sample(j) - sample)
+            for j in range(max(k + 1, 0), max(k + 1, 0) + ahead)
+        ]
+        return BeatView(last=last, upcoming=upcoming, sr=self._sr)
 
     def beat_samples_in(self, start: int, count: int) -> list[int]:
         """Where the beats in this span begin. What the click suppressor needs
