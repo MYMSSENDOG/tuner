@@ -136,11 +136,6 @@ DRAWER_SHORTCUT = "Alt+L"
 MIN_TAKE_SECONDS = 0.5
 RECORDER_TICK_MS = 250  # the elapsed clock; finer than a second so it looks live
 PLAYBACK_TICK_MS = 100  # the seek bar: smooth enough to read as moving
-# The tuner is 190 tall and a list of takes cannot live in that - at 197 the
-# panel showed one and a half rows behind a scrollbar. Opening the drawer
-# therefore also gives the window the height a list needs, and closing it
-# hands that height back, so the tuner alone is never any taller than it was.
-DRAWER_MIN_HEIGHT = 360
 DRAWER_OPEN_KEY = "drawer_open"
 
 
@@ -229,7 +224,6 @@ class MainWindow(QMainWindow):
         ]
         # What the window was before the drawer stretched it, so closing can
         # put it back rather than leaving the tuner permanently taller.
-        self._height_before_drawer: int | None = None
         self._recorder_timer = QTimer(self)
         self._recorder_timer.setInterval(RECORDER_TICK_MS)
         self._recorder_timer.timeout.connect(self._tick_recorder)
@@ -548,8 +542,11 @@ class MainWindow(QMainWindow):
     def set_drawer_open(self, is_open: bool) -> None:
         """Open or close the drawer, resizing the window by exactly its width.
 
-        The tuner column keeps its own geometry: only the window's right edge
-        moves, so nothing the player was looking at shifts under them.
+        Only the window's right edge moves: the tuner column keeps its width
+        and the window its height, so nothing the player was looking at shifts
+        or grows under them. The drawer is built to fit whatever height the
+        tuner has (`tests/integration/test_recorder_ui.py` seals it); it once
+        lent the window 360px instead, which made the tuner jump taller.
         """
         if is_open == self.drawer_open:
             return
@@ -557,27 +554,16 @@ class MainWindow(QMainWindow):
         # minimum width, and Qt grows the window to meet it on the spot. Adding
         # the drawer's width to the number read afterwards would therefore add
         # it twice (measured: 331 -> 731 instead of 531).
-        # Both measured *before* the panel appears, for the same reason: the
-        # moment it is shown Qt grows the window to the panel's minimum. Height
-        # was once read afterwards and so remembered the drawer's 250 as the
-        # tuner's own height, which closing then dutifully restored.
         was, height = self.width(), self.height()
         self._drawer.setVisible(is_open)
         self._drawer_handle.set_open(is_open)
         if not self.isMaximized() and not self.isFullScreen():
-            if is_open and height < DRAWER_MIN_HEIGHT:
-                self._height_before_drawer = height
-                height = DRAWER_MIN_HEIGHT
-            elif not is_open and self._height_before_drawer is not None:
-                height = self._height_before_drawer
-                self._height_before_drawer = None
             # Showing the drawer raises the window's *explicit* minimum size
             # (Qt writes the layout's minimum onto the window), and hiding it
             # again does not lower it — so a resize would be clamped and the
             # window would stay open-sized forever. Dropping the minimum lets
             # the resize through; the layout writes its own back on the next
             # pass, which is why reopening lands on exactly the same numbers.
-            # Both axes, now that the drawer has a minimum height of its own.
             self.setMinimumSize(0, 0)
             delta = DRAWER_WIDTH if is_open else -DRAWER_WIDTH
             self.resize(was + delta, height)

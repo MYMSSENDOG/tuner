@@ -11,9 +11,9 @@ someone else's machine is not worth the two lines it saves.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QAbstractButton
+from PySide6.QtWidgets import QAbstractButton, QSizePolicy
 
 MIC = "mic"
 STOP = "stop"
@@ -42,19 +42,37 @@ class RoundButton(QAbstractButton):
         glyph_color: str,
         parent=None,
         ring_span: int = 0,
+        min_diameter: int | None = None,
     ):
         super().__init__(parent)
         self._glyph = glyph
-        self._diameter = diameter
         self._fill = QColor(fill)
         self._glyph_color = QColor(glyph_color)
         self._ringed = False
         # Only a button that will wear rings reserves room for them. The mic
         # never does, and reserving it anyway made that button's widget half
         # empty space in a panel that has none to spare.
-        self.setFixedSize(diameter + 2 * ring_span, diameter + 2 * ring_span)
+        self._ring_span = ring_span
+        # A hero button may give way when the window is short: it asks for
+        # `diameter` and settles for `min_diameter`, so the drawer fits the
+        # tuner's height instead of making the window taller.
+        smallest = diameter if min_diameter is None else min_diameter
+        self.setMinimumSize(smallest + 2 * ring_span, smallest + 2 * ring_span)
+        self.setMaximumSize(diameter + 2 * ring_span, diameter + 2 * ring_span)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+    def sizeHint(self) -> QSize:
+        return self.maximumSize()
+
+    def minimumSizeHint(self) -> QSize:
+        return self.minimumSize()
+
+    @property
+    def diameter(self) -> float:
+        """The circle as drawn: the widget's short side, less the ring room."""
+        return min(self.width(), self.height()) - 2 * self._ring_span
 
     def set_glyph(self, glyph: str) -> None:
         self._glyph = glyph
@@ -78,7 +96,7 @@ class RoundButton(QAbstractButton):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         centre = QPointF(self.width() / 2.0, self.height() / 2.0)
-        radius = self._diameter / 2.0
+        radius = self.diameter / 2.0
 
         if self._ringed:
             painter.setBrush(Qt.BrushStyle.NoBrush)

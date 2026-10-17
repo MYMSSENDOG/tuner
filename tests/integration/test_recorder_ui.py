@@ -72,9 +72,7 @@ def test_the_controls_row_holds_only_the_tuners_own_controls(window):
 
 
 def test_opening_the_drawer_does_not_narrow_the_tuner(window, qapp):
-    """Width is the promise: the meter keeps every pixel it had. Height is
-    deliberately *not* — a list of takes cannot live in 190px, so opening the
-    drawer lends the window height and closing gives it back."""
+    """The meter keeps every pixel it had."""
     before = window._meter.width()
     window.set_drawer_open(True)
     qapp.processEvents()
@@ -82,21 +80,21 @@ def test_opening_the_drawer_does_not_narrow_the_tuner(window, qapp):
     assert tuner_column(window).width() == mw.TUNER_WIDTH
 
 
-def test_the_window_grows_by_exactly_the_drawer_and_shrinks_back(window, qapp):
+def test_the_drawer_only_adds_width(window, qapp):
+    """Opening moves the right edge and nothing else. The window used to be
+    lent 360px of height as well, and the tuner jumped taller with it."""
     width, height = window.width(), window.height()
     window.set_drawer_open(True)
     qapp.processEvents()
-    assert window.width() == width + DRAWER_WIDTH
-    assert window.height() >= mw.DRAWER_MIN_HEIGHT
+    assert (window.width(), window.height()) == (width + DRAWER_WIDTH, height)
 
     window.set_drawer_open(False)
     qapp.processEvents()
-    assert window.width() == width
-    assert window.height() == height, "the tuner was left taller than it was"
+    assert (window.width(), window.height()) == (width, height)
 
 
-def test_a_window_already_tall_enough_is_not_resized(window, qapp):
-    window.resize(window.width(), mw.DRAWER_MIN_HEIGHT + 120)
+def test_a_taller_window_keeps_its_height_too(window, qapp):
+    window.resize(window.width(), 480)
     qapp.processEvents()
     tall = window.height()
     window.set_drawer_open(True)
@@ -105,6 +103,41 @@ def test_a_window_already_tall_enough_is_not_resized(window, qapp):
     window.set_drawer_open(False)
     qapp.processEvents()
     assert window.height() == tall
+
+
+def _drawer_states(drawer):
+    """Every page in its tallest state, each with a message under it."""
+    yield "list", drawer.show_list
+    yield "recording", drawer.show_recording
+
+    def paused():
+        drawer.show_recording()
+        drawer.set_paused(True)
+
+    yield "paused", paused
+    yield "playback", lambda: drawer.show_playback("2026-10-05 15-15", "2026-10-05 오후 3:15", 154.0)
+
+
+@pytest.mark.parametrize("state", ["list", "recording", "paused", "playback"])
+def test_every_page_fits_the_tuner_at_its_shortest(window, qapp, state):
+    """What lets the window keep its height: no page, with a message showing,
+    asks for more height than the tuner's own floor. A page that did would
+    make Qt grow the window the moment it appeared."""
+    drawer = window._drawer
+    window.set_drawer_open(True)
+    dict(_drawer_states(drawer))[state]()
+    drawer.say("녹음 저장 실패: " + "아주 긴 오류 메시지 " * 8, ok=False)
+    qapp.processEvents()
+    floor = tuner_column(window).minimumSizeHint().height()
+    assert drawer.minimumSizeHint().height() <= floor
+
+
+def test_a_long_message_stays_one_line_but_is_kept_whole(window, qapp):
+    drawer = window._drawer
+    message = "녹음 저장 실패: " + "아주 긴 오류 메시지 " * 8
+    drawer.say(message, ok=False)
+    assert drawer.status_text == message
+    assert drawer._status.text() != message  # elided on screen
 
 
 def test_the_handle_is_the_only_thing_always_on_screen(window):

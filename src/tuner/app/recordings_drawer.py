@@ -58,6 +58,7 @@ MIC_DIAMETER = 34
 LISTEN_DIAMETER = 26  # a small player tucked under the trail, not a second hero
 STOP_DIAMETER = 56
 PLAY_DIAMETER = 56
+HERO_MIN_DIAMETER = 36  # what stop and play shrink to in a short window
 
 # The level history drawn while recording: one bar per reading, oldest left.
 # Not the file's waveform — it is the same input level the bar under the meter
@@ -221,8 +222,10 @@ class RecordingsDrawer(QWidget):
 
         # Everything this feature has to say appears here, under whichever page
         # is showing — the tuner's own note line stays about the tuner.
+        # One line, always: wrapped, a long error grew the drawer taller than
+        # the tuner and so the window with it. The whole text is the tooltip.
         self._status = QLabel("")
-        self._status.setWordWrap(True)
+        self._status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self._status.hide()
         self.say("")
         outer.addWidget(self._status)
@@ -281,28 +284,38 @@ class RecordingsDrawer(QWidget):
         """
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(14, 8, 14, 0)
-        layout.setSpacing(6)
+        # Tight on purpose: paused, with a message under it, this page must
+        # still fit the tuner at its shortest (the window never grows taller
+        # for the drawer). The stop circle gives way first.
+        layout.setContentsMargins(14, 4, 14, 0)
+        layout.setSpacing(0)
         layout.addStretch(1)
 
+        # "paused" sits beside the clock, not under it: a line of its own was
+        # the one thing that did not fit
+        clock_row = QHBoxLayout()
+        clock_row.setSpacing(6)
         self._clock = QLabel(clock_text(0))
         self._clock.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._clock.setStyleSheet(f"color: {INK}; border: 0; font-size: 24px; font-weight: 300;")
-        layout.addWidget(self._clock)
         self._paused_caption = QLabel("일시정지됨")
-        self._paused_caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._paused_caption.setStyleSheet(f"color: {DIM}; border: 0;")
         self._paused_caption.hide()
-        layout.addWidget(self._paused_caption)
+        clock_row.addStretch(1)
+        clock_row.addWidget(self._clock)
+        clock_row.addWidget(self._paused_caption, 0, Qt.AlignmentFlag.AlignBottom)
+        clock_row.addStretch(1)
+        layout.addLayout(clock_row)
 
         self._trail = _LevelTrail()
         layout.addWidget(self._trail)
 
         # the listen-back player: only while paused (hearing the take while it
         # is still being recorded would put the playback into the take)
+        layout.addSpacing(2)
         self._listen_row = QWidget()
         listen = QHBoxLayout(self._listen_row)
-        listen.setContentsMargins(0, 2, 0, 2)
+        listen.setContentsMargins(0, 0, 0, 0)
         listen.setSpacing(8)
         self._listen = RoundButton(PLAY, LISTEN_DIAMETER, PLAY_FILL, PLAY_GLYPH)
         self._listen.setToolTip("일시정지한 곳까지 들어보기")
@@ -318,7 +331,12 @@ class RecordingsDrawer(QWidget):
 
         tray = QHBoxLayout()
         self._stop = RoundButton(
-            STOP, STOP_DIAMETER, RECORD_FILL, RECORD_GLYPH, ring_span=RING_SPAN
+            STOP,
+            STOP_DIAMETER,
+            RECORD_FILL,
+            RECORD_GLYPH,
+            ring_span=RING_SPAN,
+            min_diameter=HERO_MIN_DIAMETER,
         )
         self._stop.setToolTip("중지하고 저장 (Alt+S)")
         self._stop.set_ringed(True)
@@ -340,6 +358,7 @@ class RecordingsDrawer(QWidget):
     def _seek_bar(self, signal) -> QSlider:
         bar = QSlider(Qt.Orientation.Horizontal)
         bar.setRange(0, 1000)
+        bar.setFixedHeight(16)  # the handle is 11px; the platform's 22 is air
         bar.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         bar.setStyleSheet(
             "QSlider { border: 0; }"
@@ -377,14 +396,15 @@ class RecordingsDrawer(QWidget):
         layout.addLayout(head)
 
         # the take's intonation, under the sound of it (app/take_pitch_view.py)
-        layout.addSpacing(4)
         self._pitch = TakePitchView()
         self._pitch.seeked.connect(self.seeked.emit)
         layout.addWidget(self._pitch)
 
         layout.addStretch(1)
         tray = QHBoxLayout()
-        self._play = RoundButton(PLAY, PLAY_DIAMETER, PLAY_FILL, PLAY_GLYPH)
+        self._play = RoundButton(
+            PLAY, PLAY_DIAMETER, PLAY_FILL, PLAY_GLYPH, min_diameter=HERO_MIN_DIAMETER
+        )
         self._play.clicked.connect(self.play_pressed.emit)
         tray.addStretch(1)
         tray.addWidget(self._play)
@@ -431,7 +451,7 @@ class RecordingsDrawer(QWidget):
     def _flat_style(colour: str) -> str:
         return (
             f"QPushButton {{ background: transparent; border: 0; color: {colour};"
-            " padding: 3px 8px; }"
+            " padding: 1px 8px; }"
             f" QPushButton:hover {{ color: {INK}; }}"
         )
 
@@ -552,9 +572,13 @@ class RecordingsDrawer(QWidget):
     def say(self, text: str, ok: bool = True) -> None:
         self._status.setStyleSheet(
             f"color: {STATUS_OK if ok else STATUS_BAD}; border: 0;"
-            f" border-top: 1px solid {DIVIDER}; padding: 4px 10px;"
+            f" border-top: 1px solid {DIVIDER}; padding: 3px 10px;"
         )
-        self._status.setText(text)
+        room = WIDTH - 28  # the label's side padding, and a little air
+        self._status.setText(
+            self._status.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, room)
+        )
+        self._status.setToolTip(text)
         self._status.setVisible(bool(text))
 
     def _on_row(self, index: int) -> None:
@@ -601,7 +625,7 @@ class RecordingsDrawer(QWidget):
 
     @property
     def status_text(self) -> str:
-        return self._status.text()
+        return self._status.toolTip()  # the whole message; the label may be elided
 
     @property
     def recording_visible(self) -> bool:

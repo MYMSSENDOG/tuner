@@ -19,14 +19,15 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from tuner.app.meter_model import GREEN_LIMIT, ORANGE_LIMIT, zone_for_cents
 from tuner.app.take_analysis import PitchTrack
 
-HEIGHT = 104
+HEIGHT = 104  # what it asks for; it gives way down to MIN_HEIGHT
+MIN_HEIGHT = 40  # the tuner at its shortest still has room for the drawer
 RANGE_CENTS = 50.0
 LABEL_BAND = 14  # room at the top for note names
 # A note name is written only where the note lasted long enough to read; a
@@ -53,9 +54,13 @@ class TakePitchView(QWidget):
         self._track: PitchTrack | None = None
         self._position_s = 0.0
         self._message = ""
-        self.setFixedHeight(HEIGHT)
+        self.setMinimumHeight(MIN_HEIGHT)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip("녹음의 음정 — 초록 ±8¢, 주황 ±15¢, 빨강은 그 밖")
+
+    def sizeHint(self) -> QSize:
+        return QSize(super().sizeHint().width(), HEIGHT)
 
     # --- what the window tells it -------------------------------------------
 
